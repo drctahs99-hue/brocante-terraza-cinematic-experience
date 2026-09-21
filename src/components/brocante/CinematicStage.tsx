@@ -155,7 +155,7 @@ export function CinematicStage({ onBook }: Props) {
       <div className="cinematic-progress" style={{ transform: `scaleX(${progress})` }} />
       <span className="cinematic-status">{sequenceAvailable ? "480 FRAMES · SCROLL TO EXPLORE" : "BROcante · LOMAS–VIRREYES"}</span>
       {scenes.map((scene, index) => (
-        <div key={scene.count} ref={(node) => { overlayRefs.current[index] = node; }} className="scene-copy">
+        <div key={scene.count} ref={(node) => { overlayRefs.current[index] = node; }} className={index === 0 ? "scene-copy scene-initial" : "scene-copy"}>
           <div className="scene-meta"><span>{scene.count}</span><span>{scene.tag}</span></div>
           <h1>{scene.title}</h1>
           <p>{scene.text}</p>
