@@ -277,7 +277,7 @@
   .nav-links.nav-open { display: flex; }
   .nav-links a { padding: 1rem; }
   .header-cta { display: none; }
-  .menu-button { display: inline-flex !important; }
+  .site-header .menu-button { display: inline-flex !important; }
   .spec-grid { grid-template-columns: repeat(2, 1fr); }
   .spec-card:nth-child(2) { border-right: 0; }
   .spec-card:nth-child(-n+2) { border-bottom: 1px solid var(--border); }
