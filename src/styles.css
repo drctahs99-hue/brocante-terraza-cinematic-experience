@@ -175,14 +175,15 @@
   .nav-links a::after { content: ""; position: absolute; left: 0; right: 100%; bottom: -.35rem; height: 1px; background: var(--gold); transition: right .3s; }
   .nav-links a:hover::after { right: 0; }
   .header-cta { justify-self: end; height: 2.95rem; }
-  .menu-button { display: none; justify-self: end; border-radius: 999px; }
+  .menu-button { display: none !important; justify-self: end; border-radius: 999px; }
 
   .cinematic-stage { position: relative; height: 100vh; min-height: 40rem; overflow: hidden; background: var(--ink); }
   .cinematic-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
   .cinematic-veil { position: absolute; inset: 0; background: linear-gradient(90deg, oklch(0.12 0.01 60 / .42), transparent 60%), linear-gradient(0deg, oklch(0.12 0.01 60 / .22), transparent 45%); }
   .cinematic-progress { position: absolute; z-index: 4; left: 0; bottom: 0; width: 100%; height: 2px; transform-origin: left; background: var(--gold); }
   .cinematic-status { position: absolute; z-index: 3; left: 3rem; bottom: 2rem; color: oklch(0.98 0.005 70 / .7); font-size: .55rem; letter-spacing: .18em; }
-  .scene-copy { position: absolute; z-index: 3; left: clamp(1.25rem, 8vw, 8rem); bottom: clamp(6rem, 16vh, 10rem); width: min(45rem, 83vw); color: var(--background); }
+  .scene-copy { position: absolute; z-index: 3; left: clamp(1.25rem, 8vw, 8rem); bottom: clamp(6rem, 16vh, 10rem); width: min(45rem, 83vw); color: var(--background); opacity: 0; visibility: hidden; }
+  .scene-copy:first-of-type { opacity: 1; visibility: visible; }
   .scene-meta { display: flex; align-items: center; gap: 1.5rem; margin-bottom: 1.5rem; font-size: .62rem; font-weight: 600; letter-spacing: .2em; }
   .scene-meta span:first-child { display: grid; place-items: center; width: 3.5rem; height: 3.5rem; border: 1px solid color-mix(in oklch, var(--gold) 65%, transparent); border-radius: 50%; }
   .scene-copy h1 { max-width: 12ch; font-family: var(--font-display); font-size: clamp(3rem, 7vw, 7rem); font-style: italic; font-weight: 400; line-height: .92; }
@@ -276,7 +277,7 @@
   .nav-links.nav-open { display: flex; }
   .nav-links a { padding: 1rem; }
   .header-cta { display: none; }
-  .menu-button { display: inline-flex; }
+  .menu-button { display: inline-flex !important; }
   .spec-grid { grid-template-columns: repeat(2, 1fr); }
   .spec-card:nth-child(2) { border-right: 0; }
   .spec-card:nth-child(-n+2) { border-bottom: 1px solid var(--border); }
