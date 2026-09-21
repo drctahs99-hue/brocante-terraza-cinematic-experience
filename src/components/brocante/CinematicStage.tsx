@@ -34,7 +34,7 @@ export function CinematicStage({ onBook }: Props) {
     if (!context) return;
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const mobile = window.matchMedia("(max-width: 767px)").matches;
-    const base = import.meta.env.VITE_FRAMES_BASE_URL as string | undefined;
+    const base = import.meta.env["VITE_FRAMES_BASE_URL"] as string | undefined;
     let destroyed = false;
     let poster: HTMLImageElement | null = new Image();
 
