@@ -175,7 +175,7 @@
   .nav-links a::after { content: ""; position: absolute; left: 0; right: 100%; bottom: -.35rem; height: 1px; background: var(--gold); transition: right .3s; }
   .nav-links a:hover::after { right: 0; }
   .header-cta { justify-self: end; height: 2.95rem; }
-  .menu-button { display: none !important; justify-self: end; border-radius: 999px; }
+  .menu-button { display: none; justify-self: end; border-radius: 999px; }
 
   .cinematic-stage { position: relative; height: 100vh; min-height: 40rem; overflow: hidden; background: var(--ink); }
   .cinematic-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
