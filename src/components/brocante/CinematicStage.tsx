@@ -33,6 +33,7 @@ export function CinematicStage({ onBook, onCompleteChange }: Props) {
     const context = canvas.getContext("2d");
     if (!context) return;
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reduced) onCompleteChange(true);
     const mobile = window.matchMedia("(max-width: 767px)").matches;
     const base = import.meta.env["VITE_FRAMES_BASE_URL"] as string | undefined;
     let destroyed = false;
@@ -146,6 +147,7 @@ export function CinematicStage({ onBook, onCompleteChange }: Props) {
       cache.current.forEach((bitmap) => bitmap.close());
       cache.current.clear();
       poster = null;
+      onCompleteChange(false);
     };
   }, [onCompleteChange]);
 
