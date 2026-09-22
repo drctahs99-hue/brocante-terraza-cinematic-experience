@@ -8,15 +8,15 @@ const TOTAL_FRAMES = 480;
 const WINDOW = 16;
 
 const scenes = [
-  { range: [9, 99], count: "01 / 04", tag: "LOMAS–VIRREYES · CDMX", title: "L’Art de Recevoir.", text: "Una terraza privada concebida para bodas íntimas y celebraciones que trascienden el tiempo." },
-  { range: [129, 219], count: "02 / 04", tag: "DISEÑO & MATERIA", title: "La Belleza en el Detalle.", text: "Texturas orgánicas, cantera y luz natural en un entorno exclusivo de hasta 120 invitados." },
-  { range: [249, 339], count: "03 / 04", tag: "ESPACIOS VERSÁTILES", title: "Entre Cielo y Arquitectura.", text: "Salón interior climatizado, asador de autor, horno de leña y vistas panorámicas del poniente." },
-  { range: [369, 479], count: "04 / 04", tag: "TU FECHA EN BROCANTE", title: "Vivan la Experiencia.", text: "Una celebración privada, concebida alrededor de ustedes." },
+  { range: [9, 99], tag: "LOMAS–VIRREYES · CDMX", title: "L'Art de Recevoir.", text: "Una terraza privada concebida para bodas íntimas y celebraciones que trascienden el tiempo." },
+  { range: [129, 219], tag: "DISEÑO Y MATERIA", title: "La Belleza en el Detalle.", text: "Texturas orgánicas, cantera y luz natural en un entorno exclusivo de hasta 120 invitados." },
+  { range: [249, 339], tag: "ESPACIOS VERSÁTILES", title: "Entre Cielo y Arquitectura.", text: "Salón interior climatizado, asador de autor, horno de leña y vistas panorámicas del poniente." },
+  { range: [369, 479], tag: "TU FECHA EN BROCANTE", title: "Vivan la Experiencia.", text: "Una celebración privada, concebida alrededor de ustedes." },
 ] as const;
 
-type Props = { onBook: () => void };
+type Props = { onBook: () => void; onCompleteChange: (complete: boolean) => void };
 
-export function CinematicStage({ onBook }: Props) {
+export function CinematicStage({ onBook, onCompleteChange }: Props) {
   const sectionRef = useRef<HTMLElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const overlayRefs = useRef<(HTMLDivElement | null)[]>([]);
@@ -33,6 +33,7 @@ export function CinematicStage({ onBook }: Props) {
     const context = canvas.getContext("2d");
     if (!context) return;
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reduced) onCompleteChange(true);
     const mobile = window.matchMedia("(max-width: 767px)").matches;
     const base = import.meta.env["VITE_FRAMES_BASE_URL"] as string | undefined;
     let destroyed = false;
@@ -122,6 +123,7 @@ export function CinematicStage({ onBook }: Props) {
           onUpdate: () => {
             frameRef.current = state.frame;
             setProgress(state.frame / (TOTAL_FRAMES - 1));
+            onCompleteChange(state.frame >= TOTAL_FRAMES - 3);
             warmWindow(Math.round(state.frame));
             render(state.frame);
           },
@@ -145,18 +147,19 @@ export function CinematicStage({ onBook }: Props) {
       cache.current.forEach((bitmap) => bitmap.close());
       cache.current.clear();
       poster = null;
+      onCompleteChange(false);
     };
-  }, []);
+  }, [onCompleteChange]);
 
   return (
     <section ref={sectionRef} id="terraza" className="cinematic-stage">
       <canvas ref={canvasRef} aria-label="Recorrido cinematográfico por Brocante Terraza" />
       <div className="cinematic-veil" />
       <div className="cinematic-progress" style={{ transform: `scaleX(${progress})` }} />
-      <span className="cinematic-status">{sequenceAvailable ? "480 FRAMES · SCROLL TO EXPLORE" : "BROcante · LOMAS–VIRREYES"}</span>
+      <span className="cinematic-status">{sequenceAvailable ? "480 CUADROS · DESLIZA PARA RECORRER" : "BROCANTE · LOMAS–VIRREYES"}</span>
       {scenes.map((scene, index) => (
-        <div key={scene.count} ref={(node) => { overlayRefs.current[index] = node; }} className={index === 0 ? "scene-copy scene-initial" : "scene-copy"}>
-          <div className="scene-meta"><span>{scene.count}</span><span>{scene.tag}</span></div>
+        <div key={scene.title} ref={(node) => { overlayRefs.current[index] = node; }} className={index === 0 ? "scene-copy scene-initial" : "scene-copy"}>
+          <div className="scene-meta"><span>{scene.tag}</span></div>
           <h1>{scene.title}</h1>
           <p>{scene.text}</p>
           {index === 3 && (

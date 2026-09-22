@@ -15,7 +15,16 @@ export const venue = {
     ["Galería", "#galeria"],
     ["Contacto", "#contacto"],
   ],
-  events: ["Bodas íntimas", "Cenas privadas", "Lanzamientos de marca", "Cócteles"],
+  events: ["Bodas íntimas", "Cenas privadas", "Corporativo", "Cócteles"],
+  formEvents: ["Boda íntima", "Cóctel", "Cena de gala", "Lanzamiento"],
+  schedules: ["Tarde", "Puesta de sol", "Nocturno"],
+  services: [
+    { name: "Banquete de autor", pricePerGuest: 950 },
+    { name: "Barra de coctelería", pricePerGuest: 420 },
+    { name: "Decoración floral", fixedPrice: 28000 },
+    { name: "Mobiliario vintage Brocante", fixedPrice: 18000 },
+  ],
+  estimate: { venueBase: 68000, venuePerGuest: 780, rangeFactor: 0.12 },
   faqs: [
     {
       question: "¿Cómo se confirma una fecha?",
@@ -39,3 +48,10 @@ export const venue = {
 export const defaultWhatsApp = `https://wa.me/${venue.phoneDigits}?text=${encodeURIComponent(
   "Hola, me interesa conocer disponibilidad para un evento en Brocante Terraza",
 )}`;
+
+export const eventFormMap: Record<string, string> = {
+  "Bodas íntimas": "Boda íntima",
+  "Cenas privadas": "Cena de gala",
+  Corporativo: "Lanzamiento",
+  Cócteles: "Cóctel",
+};
