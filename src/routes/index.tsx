@@ -11,7 +11,7 @@ import { CustomCursor } from "@/components/brocante/CustomCursor";
 import { DossierButton, DossierDialog } from "@/components/brocante/DossierDialog";
 import { Gallery } from "@/components/brocante/Gallery";
 import { ScrollReveal } from "@/components/brocante/ScrollReveal";
-import { defaultWhatsApp, eventFormMap, venue } from "@/data/venue-config";
+import { eventFormMap, venue } from "@/data/venue-config";
 
 export const Route = createFileRoute("/")({
   head: () => ({
