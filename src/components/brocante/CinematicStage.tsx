@@ -57,13 +57,27 @@ export function CinematicStage({ onBook, onCompleteChange }: Props) {
       context.globalAlpha = 1;
     };
 
+    const nearest = (target: number) => {
+      for (let d = 1; d < TOTAL_FRAMES; d += 1) {
+        const lower = cache.current.get(target - d);
+        if (lower) return lower;
+        const upper = cache.current.get(target + d);
+        if (upper) return upper;
+      }
+      return undefined;
+    };
+
     const render = (value: number) => {
       const a = Math.floor(value);
       const b = Math.min(TOTAL_FRAMES - 1, a + 1);
       const imageA = cache.current.get(a);
       const imageB = cache.current.get(b);
       if (imageA) cover(imageA);
-      else if (poster?.complete) cover(poster);
+      else {
+        const fallback = nearest(a);
+        if (fallback) cover(fallback);
+        else if (poster?.complete) cover(poster);
+      }
       if (imageA && imageB) cover(imageB, value - a);
     };
 
@@ -105,9 +119,12 @@ export function CinematicStage({ onBook, onCompleteChange }: Props) {
 
     let cleanup = () => undefined;
     if (!reduced) {
-      void Promise.all([8, 4, 2, 1].map(async (step) => {
-        for (let index = 0; index < TOTAL_FRAMES && !destroyed; index += step) await loadFrame(index);
-      }));
+      void Promise.all(Array.from({ length: 20 }, (_, index) => loadFrame(index))).then(() => {
+        render(frameRef.current);
+        return Promise.all([8, 4, 2, 1].map(async (step) => {
+          for (let index = 0; index < TOTAL_FRAMES && !destroyed; index += step) await loadFrame(index);
+        }));
+      });
       Promise.all([import("gsap"), import("gsap/ScrollTrigger"), import("lenis")]).then(([gsapModule, scrollModule, lenisModule]) => {
         if (destroyed) return;
         const gsap = gsapModule.gsap;
