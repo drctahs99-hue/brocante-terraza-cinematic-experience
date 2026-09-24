@@ -6,6 +6,7 @@ import { defaultWhatsApp } from "@/data/venue-config";
 
 const TOTAL_FRAMES = 480;
 const WINDOW = 16;
+const FRAMES_URL = "https://drctahs99-hue.github.io/frames/Desktop";
 
 const scenes = [
   { range: [9, 99], tag: "LOMAS–VIRREYES · CDMX", title: "L'Art de Recevoir.", text: "Una terraza privada concebida para bodas íntimas y celebraciones que trascienden el tiempo." },
@@ -66,12 +67,15 @@ export function CinematicStage({ onBook, onCompleteChange }: Props) {
       if (imageA && imageB) cover(imageB, value - a);
     };
 
-    poster.src = arrival;
+    poster.crossOrigin = "anonymous";
+    poster.src = base ? arrival : `${FRAMES_URL}/f_0001.webp`;
     poster.onload = () => render(frameRef.current);
 
-    const frameUrl = (index: number) => `${base}/${mobile ? "mobile" : "desktop"}/f_${String(index + 1).padStart(4, "0")}.webp`;
+    const frameUrl = (index: number) => base
+      ? `${base}/${mobile ? "mobile" : "desktop"}/f_${String(index + 1).padStart(4, "0")}.webp`
+      : `${FRAMES_URL}/f_${String(index + 1).padStart(4, "0")}.webp`;
     const loadFrame = async (index: number) => {
-      if (!base || cache.current.has(index) || queued.current.has(index) || destroyed) return;
+      if (cache.current.has(index) || queued.current.has(index) || destroyed) return;
       queued.current.add(index);
       try {
         const response = await fetch(frameUrl(index));
