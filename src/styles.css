@@ -378,3 +378,24 @@
   [role="dialog"] { position: fixed !important; inset: 0 !important; width: 100% !important; max-width: none !important; transform: none !important; border: 0 !important; }
   [role="dialog"] button { display: none !important; }
 }
+
+/* Entrada cinematográfica inmersiva */
+.cinematic-reveal { perspective: 1400px; }
+.cinematic-reveal canvas { animation: stage-depth 1.5s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.cinematic-reveal .scene-initial { animation: stage-copy 1.4s cubic-bezier(0.22, 1, 0.36, 1) 0.25s both; }
+.cinematic-curtain {
+  position: absolute; inset: 0; z-index: 3; pointer-events: none;
+  background: var(--background);
+  animation: stage-aperture 1.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.cinematic-grain {
+  position: absolute; inset: 0; z-index: 2; pointer-events: none; opacity: 0.06; mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+@keyframes stage-depth { from { transform: scale(1.08) rotateX(2deg); filter: blur(8px); } to { transform: none; filter: blur(0); } }
+@keyframes stage-copy { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
+@keyframes stage-aperture { from { clip-path: inset(0 0 0 0); } to { clip-path: inset(50% 0 50% 0); visibility: hidden; } }
+@media (prefers-reduced-motion: reduce) {
+  .cinematic-reveal canvas, .cinematic-reveal .scene-initial { animation: none; }
+  .cinematic-curtain { display: none; }
+}
