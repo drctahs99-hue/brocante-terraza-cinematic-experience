@@ -1,0 +1,610 @@
+diff --git a/src/components/brocante/AvailabilityCalendar.tsx b/src/components/brocante/AvailabilityCalendar.tsx
+index 76a4d7c..4fb1ca2 100644
+--- a/src/components/brocante/AvailabilityCalendar.tsx
++++ b/src/components/brocante/AvailabilityCalendar.tsx
+@@ -1,5 +1,6 @@
+-import { useMemo } from "react";
++import { useEffect, useState } from "react";
+ import { Button } from "@/components/ui/button";
++import { Reveal3D } from "@/components/brocante/Reveal3D";
+ 
+ type Props = { selectedDate: string; onSelectDate: (date: string) => void; onContinue: () => void };
+ 
+@@ -10,52 +11,81 @@ function localIso(date: Date) {
+   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+ }
+ 
++// Always computed client-side, after mount, from the visitor's own local
++// clock — never during server rendering — so the three visible months can
++// never differ between the first paint and the browser's own date.
++function buildCalendar() {
++  const now = new Date();
++  const nextMonths = Array.from({ length: 3 }, (_, offset) => new Date(now.getFullYear(), now.getMonth() + offset, 1));
++  const weekends: string[] = [];
++  nextMonths.forEach((month) => {
++    const days = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
++    for (let day = 1; day <= days; day += 1) {
++      const candidate = new Date(month.getFullYear(), month.getMonth(), day);
++      if ((candidate.getDay() === 6 || candidate.getDay() === 0) && candidate > now) weekends.push(localIso(candidate));
++    }
++  });
++  return { months: nextMonths, reserved: new Set(weekends.filter((_, index) => [1, 3, 6, 9, 12, 15, 18].includes(index))) };
++}
++
+ export function AvailabilityCalendar({ selectedDate, onSelectDate, onContinue }: Props) {
+-  const { months, reserved } = useMemo(() => {
+-    const now = new Date();
+-    const nextMonths = Array.from({ length: 3 }, (_, offset) => new Date(now.getFullYear(), now.getMonth() + offset, 1));
+-    const weekends: string[] = [];
+-    nextMonths.forEach((month) => {
+-      const days = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
+-      for (let day = 1; day <= days; day += 1) {
+-        const candidate = new Date(month.getFullYear(), month.getMonth(), day);
+-        if ((candidate.getDay() === 6 || candidate.getDay() === 0) && candidate > now) weekends.push(localIso(candidate));
+-      }
+-    });
+-    return { months: nextMonths, reserved: new Set(weekends.filter((_, index) => [1, 3, 6, 9, 12, 15, 18].includes(index))) };
++  const [calendar, setCalendar] = useState<{ months: Date[]; reserved: Set<string> } | null>(null);
++
++  useEffect(() => {
++    setCalendar(buildCalendar());
+   }, []);
+ 
+   return (
+     <section id="disponibilidad" className="availability-section content-section reveal-item">
+-      <div className="availability-heading">
++      <Reveal3D as="div" className="availability-heading">
+         <span className="eyebrow">DISPONIBILIDAD</span>
+         <h2>Elijan el momento<br /><em>para hacerlo suyo.</em></h2>
+         <p>Consulta inicial de fechas para los próximos tres meses. La disponibilidad se confirma personalmente con nuestro equipo.</p>
+         <div className="calendar-legend"><span><i className="available-dot" />Disponible</span><span><i className="reserved-dot" />Reservado</span></div>
+-      </div>
+-      <div className="calendar-grid">
+-        {months.map((month) => {
+-          const days = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
+-          const lead = (new Date(month.getFullYear(), month.getMonth(), 1).getDay() + 6) % 7;
+-          return (
+-            <article className="calendar-month" key={month.toISOString()}>
+-              <h3>{monthNames[month.getMonth()]} <span>{month.getFullYear()}</span></h3>
+-              <div className="calendar-weekdays">{weekdays.map((day, index) => <span key={`${day}-${index}`}>{day}</span>)}</div>
+-              <div className="calendar-days">
+-                {Array.from({ length: lead }, (_, index) => <span key={`blank-${index}`} />)}
+-                {Array.from({ length: days }, (_, index) => {
+-                  const date = new Date(month.getFullYear(), month.getMonth(), index + 1);
+-                  const iso = localIso(date);
+-                  const isReserved = reserved.has(iso);
+-                  const past = date < new Date(new Date().setHours(0, 0, 0, 0));
+-                  return <Button key={iso} variant="ghost" size="icon" disabled={isReserved || past} className={`${isReserved ? "reserved" : "available"} ${selectedDate === iso ? "selected" : ""}`} onClick={() => onSelectDate(iso)} aria-label={`${index + 1} de ${monthNames[month.getMonth()]}: ${isReserved ? "Reservado" : "Disponible"}`} title={isReserved ? "Reservado" : "Disponible"}>{index + 1}</Button>;
+-                })}
+-              </div>
+-            </article>
+-          );
+-        })}
+-      </div>
+-      {selectedDate && <div className="calendar-selection"><span>Fecha seleccionada: <strong>{new Date(`${selectedDate}T12:00:00`).toLocaleDateString("es-MX", { day: "numeric", month: "long", year: "numeric" })}</strong></span><Button variant="luxury" size="luxury" onClick={onContinue}>Continuar con esta fecha</Button></div>}
++      </Reveal3D>
++      {calendar && (
++        <div className="calendar-grid">
++          {calendar.months.map((month) => {
++            const days = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
++            const lead = (new Date(month.getFullYear(), month.getMonth(), 1).getDay() + 6) % 7;
++            return (
++              <article className="calendar-month" key={month.toISOString()}>
++                <h3>{monthNames[month.getMonth()]} <span>{month.getFullYear()}</span></h3>
++                <div className="calendar-weekdays">{weekdays.map((day, index) => <span key={`${day}-${index}`}>{day}</span>)}</div>
++                <div className="calendar-days">
++                  {Array.from({ length: lead }, (_, index) => <span key={`blank-${index}`} />)}
++                  {Array.from({ length: days }, (_, index) => {
++                    const date = new Date(month.getFullYear(), month.getMonth(), index + 1);
++                    const iso = localIso(date);
++                    const isReserved = calendar.reserved.has(iso);
++                    const past = date < new Date(new Date().setHours(0, 0, 0, 0));
++                    return (
++                      <Button
++                        key={iso}
++                        variant="ghost"
++                        size="icon"
++                        disabled={isReserved || past}
++                        className={`${isReserved ? "reserved" : "available"} ${selectedDate === iso ? "selected" : ""}`}
++                        onClick={() => onSelectDate(iso)}
++                        aria-label={`${index + 1} de ${monthNames[month.getMonth()]}: ${isReserved ? "Reservado" : "Disponible"}`}
++                        title={isReserved ? "Reservado" : "Disponible"}
++                      >
++                        {index + 1}
++                      </Button>
++                    );
++                  })}
++                </div>
++              </article>
++            );
++          })}
++        </div>
++      )}
++      {selectedDate && (
++        <div className="calendar-selection">
++          <span>Fecha seleccionada: <strong>{new Date(`${selectedDate}T12:00:00`).toLocaleDateString("es-MX", { day: "numeric", month: "long", year: "numeric" })}</strong></span>
++          <Button variant="luxury" size="luxury" onClick={onContinue}>Continuar con esta fecha</Button>
++        </div>
++      )}
+     </section>
+   );
+-}
+\ No newline at end of file
++}
+diff --git a/src/components/brocante/CinematicStage.tsx b/src/components/brocante/CinematicStage.tsx
+index 2802197..dd4e714 100644
+--- a/src/components/brocante/CinematicStage.tsx
++++ b/src/components/brocante/CinematicStage.tsx
+@@ -2,29 +2,36 @@ import { useEffect, useRef, useState } from "react";
+ import { ArrowDown, ArrowUpRight } from "lucide-react";
+ import { Button } from "@/components/ui/button";
+ import arrival from "@/assets/brocante-arrival.jpg";
+-import { defaultWhatsApp } from "@/data/venue-config";
+ 
+ const TOTAL_FRAMES = 480;
+-const WINDOW = 16;
+-const FRAMES_URL = "https://drctahs99-hue.github.io/frames/Desktop";
++const FRAMES_URL = "https://cdn.jsdelivr.net/gh/drctahs99-hue/frames@v1/Desktop";
++const CONCURRENCY = 6;
+ 
+-const scenes = [
+-  { range: [9, 99], tag: "LOMAS–VIRREYES · CDMX", title: "L'Art de Recevoir.", text: "Una terraza privada concebida para bodas íntimas y celebraciones que trascienden el tiempo." },
+-  { range: [129, 219], tag: "DISEÑO Y MATERIA", title: "La Belleza en el Detalle.", text: "Texturas orgánicas, cantera y luz natural en un entorno exclusivo de hasta 120 invitados." },
+-  { range: [249, 339], tag: "ESPACIOS VERSÁTILES", title: "Entre Cielo y Arquitectura.", text: "Salón interior climatizado, asador de autor, horno de leña y vistas panorámicas del poniente." },
+-  { range: [369, 479], tag: "TU FECHA EN BROCANTE", title: "Vivan la Experiencia.", text: "Una celebración privada, concebida alrededor de ustedes." },
+-] as const;
++type Scene = { start: number; end: number; tag: string; title: string; text: string; centered?: boolean };
++
++const scenes: Scene[] = [
++  { start: 0, end: 0.33, tag: "LOMAS–VIRREYES · CDMX", title: "L'Art de Recevoir.", text: "Una terraza privada concebida para bodas íntimas y celebraciones que trascienden el tiempo.", centered: true },
++  { start: 0.33, end: 0.66, tag: "DISEÑO Y MATERIA", title: "La Belleza en el Detalle.", text: "Texturas orgánicas, cantera y luz natural en un entorno exclusivo de hasta 120 invitados." },
++  { start: 0.66, end: 0.9, tag: "ESPACIOS VERSÁTILES", title: "Entre Cielo y Arquitectura.", text: "Salón interior climatizado, asador de autor, horno de leña y vistas panorámicas del poniente." },
++  { start: 0.9, end: 1, tag: "TU FECHA EN BROCANTE", title: "Vivan la Experiencia.", text: "" },
++];
+ 
+ type Props = { onBook: () => void; onCompleteChange: (complete: boolean) => void };
+ 
++function clampFrame(value: number) {
++  return Math.min(TOTAL_FRAMES - 1, Math.max(0, Math.round(value)));
++}
++
+ export function CinematicStage({ onBook, onCompleteChange }: Props) {
+   const sectionRef = useRef<HTMLElement>(null);
+   const canvasRef = useRef<HTMLCanvasElement>(null);
+   const overlayRefs = useRef<(HTMLDivElement | null)[]>([]);
+   const cache = useRef(new Map<number, ImageBitmap>());
+-  const queued = useRef(new Set<number>());
+-  const frameRef = useRef(0);
++  const targetFrame = useRef(0);
++  const rafId = useRef<number | undefined>(undefined);
+   const [progress, setProgress] = useState(0);
++  const [loadedCount, setLoadedCount] = useState(0);
++  const [ready, setReady] = useState(false);
+   const [sequenceAvailable, setSequenceAvailable] = useState(true);
+ 
+   useEffect(() => {
+@@ -34,27 +41,25 @@ export function CinematicStage({ onBook, onCompleteChange }: Props) {
+     const context = canvas.getContext("2d");
+     if (!context) return;
+     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+-    if (reduced) onCompleteChange(true);
+-    const mobile = window.matchMedia("(max-width: 767px)").matches;
+-    const base = import.meta.env["VITE_FRAMES_BASE_URL"] as string | undefined;
+     let destroyed = false;
+-    let poster: HTMLImageElement | null = new Image();
+ 
+-    const cover = (source: CanvasImageSource, alpha = 1) => {
++    const poster = new Image();
++    poster.crossOrigin = "anonymous";
++    poster.src = arrival;
++
++    const cover = (source: CanvasImageSource) => {
+       const width = canvas.clientWidth;
+       const height = canvas.clientHeight;
+       const sourceWidth = source instanceof ImageBitmap ? source.width : (source as HTMLImageElement).naturalWidth;
+       const sourceHeight = source instanceof ImageBitmap ? source.height : (source as HTMLImageElement).naturalHeight;
+-      if (!sourceWidth || !sourceHeight) return;
++      if (!sourceWidth || !sourceHeight || !width || !height) return;
+       canvas.width = Math.round(width * Math.min(devicePixelRatio, 2));
+       canvas.height = Math.round(height * Math.min(devicePixelRatio, 2));
+       context.setTransform(canvas.width / width, 0, 0, canvas.height / height, 0, 0);
+       const scale = Math.max(width / sourceWidth, height / sourceHeight);
+       const dw = sourceWidth * scale;
+       const dh = sourceHeight * scale;
+-      context.globalAlpha = alpha;
+       context.drawImage(source, (width - dw) / 2, (height - dh) / 2, dw, dh);
+-      context.globalAlpha = 1;
+     };
+ 
+     const nearest = (target: number) => {
+@@ -67,64 +72,60 @@ export function CinematicStage({ onBook, onCompleteChange }: Props) {
+       return undefined;
+     };
+ 
+-    const render = (value: number) => {
+-      const a = Math.floor(value);
+-      const b = Math.min(TOTAL_FRAMES - 1, a + 1);
+-      const imageA = cache.current.get(a);
+-      const imageB = cache.current.get(b);
+-      if (imageA) cover(imageA);
+-      else {
+-        const fallback = nearest(a);
+-        if (fallback) cover(fallback);
+-        else if (poster?.complete) cover(poster);
+-      }
+-      if (imageA && imageB) cover(imageB, value - a);
++    // Draw loop: always renders only the most recently requested frame,
++    // decoupled from scroll event rate, clamped to the valid range.
++    const draw = () => {
++      const index = clampFrame(targetFrame.current);
++      const image = cache.current.get(index) ?? nearest(index);
++      if (image) cover(image);
++      else if (poster.complete && poster.naturalWidth) cover(poster);
++      if (!destroyed) rafId.current = requestAnimationFrame(draw);
+     };
++    rafId.current = requestAnimationFrame(draw);
+ 
+-    poster.crossOrigin = "anonymous";
+-    poster.src = base ? arrival : `${FRAMES_URL}/f_0001.webp`;
+-    poster.onload = () => render(frameRef.current);
+-
+-    const frameUrl = (index: number) => base
+-      ? `${base}/${mobile ? "mobile" : "desktop"}/f_${String(index + 1).padStart(4, "0")}.webp`
+-      : `${FRAMES_URL}/f_${String(index + 1).padStart(4, "0")}.webp`;
+-    const loadFrame = async (index: number) => {
+-      if (cache.current.has(index) || queued.current.has(index) || destroyed) return;
+-      queued.current.add(index);
+-      try {
+-        const response = await fetch(frameUrl(index));
+-        if (!response.ok) throw new Error("frame unavailable");
+-        const bitmap = await createImageBitmap(await response.blob());
+-        if (!destroyed) cache.current.set(index, bitmap);
+-      } catch {
+-        if (index === 0) setSequenceAvailable(false);
+-      } finally {
+-        queued.current.delete(index);
+-      }
+-    };
++    const frameUrl = (index: number) => `${FRAMES_URL}/frame_${String(index + 1).padStart(4, "0")}.webp`;
+ 
+-    const warmWindow = (center: number) => {
+-      for (let distance = 0; distance <= WINDOW; distance += 1) {
+-        [center + distance, center - distance].forEach((index) => {
+-          if (index >= 0 && index < TOTAL_FRAMES) void loadFrame(index);
++    const loadFrame = (index: number) =>
++      fetch(frameUrl(index))
++        .then((response) => {
++          if (!response.ok) throw new Error("frame unavailable");
++          return response.blob();
++        })
++        .then((blob) => createImageBitmap(blob))
++        .then((bitmap) => {
++          if (destroyed) return;
++          cache.current.set(index, bitmap);
++          setLoadedCount((count) => count + 1);
++        })
++        .catch(() => {
++          if (index === 0) setSequenceAvailable(false);
+         });
+-      }
+-      cache.current.forEach((bitmap, index) => {
+-        if (Math.abs(index - center) > WINDOW + 8) {
+-          bitmap.close();
+-          cache.current.delete(index);
++
++    // Preload the entire 480-frame sequence once, keep it all in memory
++    // (never evicted), then unlock scroll only once it is fully ready.
++    const loadAll = async () => {
++      let cursor = 0;
++      const workers = Array.from({ length: CONCURRENCY }, async () => {
++        while (cursor < TOTAL_FRAMES && !destroyed) {
++          const index = cursor;
++          cursor += 1;
++          await loadFrame(index);
+         }
+       });
++      await Promise.all(workers);
++      if (!destroyed) setReady(true);
+     };
+ 
++    if (reduced) {
++      onCompleteChange(true);
++      setReady(true);
++      void loadFrame(0);
++    } else {
++      void loadAll();
++    }
++
+     let cleanup = () => undefined;
+     if (!reduced) {
+-      void Promise.all(Array.from({ length: 20 }, (_, index) => loadFrame(index))).then(() => {
+-        render(frameRef.current);
+-        return Promise.all([8, 4, 2, 1].map(async (step) => {
+-          for (let index = 0; index < TOTAL_FRAMES && !destroyed; index += step) await loadFrame(index);
+-        }));
+-      });
+       Promise.all([import("gsap"), import("gsap/ScrollTrigger"), import("lenis")]).then(([gsapModule, scrollModule, lenisModule]) => {
+         if (destroyed) return;
+         const gsap = gsapModule.gsap;
+@@ -142,51 +143,85 @@ export function CinematicStage({ onBook, onCompleteChange }: Props) {
+           ease: "none",
+           scrollTrigger: { trigger: section, start: "top top", end: "+=600%", pin: true, scrub: 0.8 },
+           onUpdate: () => {
+-            frameRef.current = state.frame;
++            targetFrame.current = state.frame;
+             setProgress(state.frame / (TOTAL_FRAMES - 1));
+             onCompleteChange(state.frame >= TOTAL_FRAMES - 3);
+-            warmWindow(Math.round(state.frame));
+-            render(state.frame);
+           },
+         });
+         scenes.forEach((scene, index) => {
+           const node = overlayRefs.current[index];
+           if (!node) return;
+           gsap.set(node, { autoAlpha: index === 0 ? 1 : 0, y: index === 0 ? 0 : 24 });
+-          gsap.to(node, { autoAlpha: 1, y: 0, scrollTrigger: { trigger: section, start: `${(scene.range[0] / TOTAL_FRAMES) * 600}% top`, end: `${(scene.range[1] / TOTAL_FRAMES) * 600}% top`, toggleActions: "play reverse play reverse" } });
++          gsap.to(node, {
++            autoAlpha: 1,
++            y: 0,
++            scrollTrigger: {
++              trigger: section,
++              start: `${scene.start * 600}% top`,
++              end: `${scene.end * 600}% top`,
++              toggleActions: "play reverse play reverse",
++            },
++          });
+         });
+-        cleanup = () => { trigger.kill(); ScrollTrigger.getAll().forEach((item) => item.kill()); gsap.ticker.remove(ticker); lenis.destroy(); };
++        cleanup = () => {
++          trigger.kill();
++          ScrollTrigger.getAll().forEach((item) => item.kill());
++          gsap.ticker.remove(ticker);
++          lenis.destroy();
++        };
+       });
+     }
+ 
+-    const resize = () => render(frameRef.current);
+-    window.addEventListener("resize", resize);
+     return () => {
+       destroyed = true;
+       cleanup();
+-      window.removeEventListener("resize", resize);
++      if (rafId.current) cancelAnimationFrame(rafId.current);
+       cache.current.forEach((bitmap) => bitmap.close());
+       cache.current.clear();
+-      poster = null;
+       onCompleteChange(false);
+     };
+   }, [onCompleteChange]);
+ 
++  // Block page scroll entirely until the full sequence is cached, so the
++  // first scroll the visitor makes is already perfectly smooth.
++  useEffect(() => {
++    if (ready || !sequenceAvailable) {
++      document.body.style.removeProperty("overflow");
++    } else {
++      document.body.style.overflow = "hidden";
++    }
++    return () => { document.body.style.removeProperty("overflow"); };
++  }, [ready, sequenceAvailable]);
++
++  const loadPercent = Math.min(100, Math.round((loadedCount / TOTAL_FRAMES) * 100));
++
+   return (
+     <section ref={sectionRef} id="terraza" className="cinematic-stage">
+       <canvas ref={canvasRef} aria-label="Recorrido cinematográfico por Brocante Terraza" />
+       <div className="cinematic-veil" />
+       <div className="cinematic-progress" style={{ transform: `scaleX(${progress})` }} />
+-      <span className="cinematic-status">{sequenceAvailable ? "480 CUADROS · DESLIZA PARA RECORRER" : "BROCANTE · LOMAS–VIRREYES"}</span>
++      {!ready && sequenceAvailable && (
++        <div className="cinematic-loader" role="status" aria-live="polite">
++          <span className="loader-fill" data-text="Preparando la experiencia" style={{ ["--fill" as string]: `${loadPercent}%` }}>
++            Preparando la experiencia
++          </span>
++        </div>
++      )}
++      {ready && <span className="cinematic-status">{sequenceAvailable ? "480 CUADROS · DESLIZA PARA RECORRER" : "BROCANTE · LOMAS–VIRREYES"}</span>}
+       {scenes.map((scene, index) => (
+-        <div key={scene.title} ref={(node) => { overlayRefs.current[index] = node; }} className={index === 0 ? "scene-copy scene-initial" : "scene-copy"}>
++        <div
++          key={scene.title}
++          ref={(node) => {
++            overlayRefs.current[index] = node;
++          }}
++          className={`scene-copy${index === 0 ? " scene-initial" : ""}${scene.centered ? " scene-centered" : ""}`}
++        >
+           <div className="scene-meta"><span>{scene.tag}</span></div>
+           <h1>{scene.title}</h1>
+-          <p>{scene.text}</p>
++          {scene.text && <p>{scene.text}</p>}
+           {index === 3 && (
+             <div className="scene-actions">
+-              <Button variant="luxury" size="luxury" onClick={onBook}>Agendar visita privada <ArrowUpRight /></Button>
+-              <Button variant="glass" size="luxury" asChild><a href={defaultWhatsApp} target="_blank" rel="noopener noreferrer">Cotizar por WhatsApp <ArrowUpRight /></a></Button>
++              <Button variant="goldOutline" size="xl" onClick={onBook}>Agendar una cita <ArrowUpRight /></Button>
+             </div>
+           )}
+         </div>
+diff --git a/src/components/brocante/Reveal3D.tsx b/src/components/brocante/Reveal3D.tsx
+new file mode 100644
+index 0000000..fe2717a
+--- /dev/null
++++ b/src/components/brocante/Reveal3D.tsx
+@@ -0,0 +1,49 @@
++import type { ElementType, ReactNode } from "react";
++import { motion, useReducedMotion } from "motion/react";
++
++type Tag = "div" | "article" | "section" | "header";
++
++type Props = {
++  children: ReactNode;
++  className?: string;
++  as?: Tag;
++  delay?: number;
++  [key: string]: unknown;
++};
++
++const variants = {
++  hidden: { opacity: 0, rotateX: 14, y: 36 },
++  visible: { opacity: 1, rotateX: 0, y: 0 },
++};
++
++// Immersive 3D reveal for headings and key content blocks. Falls back to a
++// plain static element when the visitor prefers reduced motion.
++export function Reveal3D({ children, className, as = "div", delay = 0, ...rest }: Props) {
++  const shouldReduceMotion = useReducedMotion();
++
++  if (shouldReduceMotion) {
++    const Static = as as ElementType;
++    return (
++      <Static className={className} {...rest}>
++        {children}
++      </Static>
++    );
++  }
++
++  const MotionTag = motion[as] as unknown as ElementType;
++
++  return (
++    <MotionTag
++      className={className}
++      style={{ perspective: 1000 }}
++      initial="hidden"
++      whileInView="visible"
++      viewport={{ once: true, amount: 0.35 }}
++      variants={variants}
++      transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1], delay }}
++      {...rest}
++    >
++      {children}
++    </MotionTag>
++  );
++}
+diff --git a/src/components/ui/button.tsx b/src/components/ui/button.tsx
+index e5121f0..414c16d 100644
+--- a/src/components/ui/button.tsx
++++ b/src/components/ui/button.tsx
+@@ -20,6 +20,7 @@ const buttonVariants = cva(
+         glass: "border border-primary/35 bg-background/35 text-foreground backdrop-blur-md shadow-glass hover:border-primary hover:bg-background/60",
+         selection: "border border-primary bg-primary text-primary-foreground",
+         selectionOutline: "border border-border bg-transparent text-foreground hover:border-primary",
++        goldOutline: "border-2 border-primary bg-transparent text-primary backdrop-blur-sm hover:bg-primary hover:text-primary-foreground",
+       },
+       size: {
+         default: "h-9 px-4 py-2",
+@@ -27,6 +28,7 @@ const buttonVariants = cva(
+         lg: "h-10 rounded-md px-8",
+         icon: "h-9 w-9",
+         luxury: "h-12 rounded-full px-7 text-[0.68rem] font-semibold uppercase tracking-[0.18em]",
++        xl: "h-16 rounded-full px-12 text-xs font-semibold uppercase tracking-[0.22em]",
+       },
+     },
+     defaultVariants: {
+diff --git a/src/routes/index.tsx b/src/routes/index.tsx
+index 52312ca..52deb0a 100644
+--- a/src/routes/index.tsx
++++ b/src/routes/index.tsx
+@@ -10,6 +10,7 @@ import { CinematicStage } from "@/components/brocante/CinematicStage";
+ import { CustomCursor } from "@/components/brocante/CustomCursor";
+ import { DossierButton, DossierDialog } from "@/components/brocante/DossierDialog";
+ import { Gallery } from "@/components/brocante/Gallery";
++import { Reveal3D } from "@/components/brocante/Reveal3D";
+ import { ScrollReveal } from "@/components/brocante/ScrollReveal";
+ import { eventFormMap, venue } from "@/data/venue-config";
+ 
+@@ -43,6 +44,7 @@ function Index() {
+   const [dossierOpen, setDossierOpen] = useState(false);
+   const handleIntroComplete = useCallback((complete: boolean) => setIntroComplete(complete), []);
+   const openBooking = (event?: string) => { if (event) setSelectedEvent(event); setBookingOpen(true); };
++  const selectDateAndOpen = (date: string) => { setSelectedDate(date); setBookingOpen(true); };
+ 
+   return (
+     <main>
+@@ -61,45 +63,47 @@ function Index() {
+       <AtmosphereMarquee />
+ 
+       <section id="ficha" className="content-section specs-section">
+-        <div className="section-heading">
++        <Reveal3D as="div" className="section-heading">
+           <span className="eyebrow">FICHA ARQUITECTÓNICA</span>
+           <h2>Todo lo esencial.<br /><em>Nada de más.</em></h2>
+           <p>Un espacio arquitectónico preparado para recibir con precisión, calidez y absoluta discreción.</p>
+-        </div>
++        </Reveal3D>
+         <div className="spec-grid">
+-          {specs.map(([number, label, value, description]) => (
+-            <article key={label} className="spec-card" data-cursor>
++          {specs.map(([number, label, value, description], index) => (
++            <Reveal3D as="article" key={label} className="spec-card" data-cursor delay={index * 0.08}>
+               <span>{number}</span><p>{label}</p><h3>{value}</h3><small>{description}</small>
+-            </article>
++            </Reveal3D>
+           ))}
+         </div>
+       </section>
+ 
+       <section id="eventos" className="content-section events-section">
+-        <div className="event-intro"><span className="eyebrow">CURADURÍA DE EVENTOS</span><h2>Cada encuentro,<br /><em>una composición.</em></h2></div>
++        <Reveal3D as="div" className="event-intro"><span className="eyebrow">CURADURÍA DE EVENTOS</span><h2>Cada encuentro,<br /><em>una composición.</em></h2></Reveal3D>
+         <div className="event-list">
+           {venue.events.map((event) => <Button variant="ghost" key={event} onClick={() => openBooking(eventFormMap[event])}><strong>{event}</strong><ArrowUpRight /></Button>)}
+         </div>
+       </section>
+ 
+-      <AvailabilityCalendar selectedDate={selectedDate} onSelectDate={setSelectedDate} onContinue={() => openBooking()} />
++      <AvailabilityCalendar selectedDate={selectedDate} onSelectDate={selectDateAndOpen} onContinue={() => openBooking()} />
+ 
+       <section id="galeria" className="gallery-section">
+-        <div className="content-section section-heading gallery-heading"><span className="eyebrow">GALERÍA Y ATMÓSFERAS</span><h2>La luz cambia.<br /><em>El lugar permanece.</em></h2><p>Desliza para recorrer los distintos momentos de Brocante.</p></div>
++        <Reveal3D as="div" className="content-section section-heading gallery-heading"><span className="eyebrow">GALERÍA Y ATMÓSFERAS</span><h2>La luz cambia.<br /><em>El lugar permanece.</em></h2><p>Desliza para recorrer los distintos momentos de Brocante.</p></Reveal3D>
+         <Gallery />
+       </section>
+ 
+       <section id="faq" className="content-section faq-section">
+-        <div className="faq-title"><span className="eyebrow">ANTES DE VISITARNOS</span><h2>Preguntas<br /><em>frecuentes.</em></h2></div>
++        <Reveal3D as="div" className="faq-title"><span className="eyebrow">ANTES DE VISITARNOS</span><h2>Preguntas<br /><em>frecuentes.</em></h2></Reveal3D>
+         <Accordion type="single" collapsible className="faq-list">
+           {venue.faqs.map((faq, index) => <AccordionItem value={`faq-${index}`} key={faq.question}><AccordionTrigger><span>0{index + 1}</span>{faq.question}</AccordionTrigger><AccordionContent>{faq.answer}</AccordionContent></AccordionItem>)}
+         </Accordion>
+       </section>
+ 
+       <section id="contacto" className="contact-section">
+-        <span className="eyebrow">PEDREGAL 55 · LOMAS–VIRREYES</span>
+-        <h2>Su fecha merece<br /><em>un lugar inolvidable.</em></h2>
+-        <p>Conversemos sobre la celebración que imaginan.</p>
++        <Reveal3D as="div">
++          <span className="eyebrow">PEDREGAL 55 · LOMAS–VIRREYES</span>
++          <h2>Su fecha merece<br /><em>un lugar inolvidable.</em></h2>
++          <p>Conversemos sobre la celebración que imaginan.</p>
++        </Reveal3D>
+         <div className="contact-actions">
+           <Button variant="luxury" size="luxury" onClick={() => openBooking()}>Agendar visita privada <ArrowRight /></Button>
+           <Button variant="glass" size="luxury" onClick={() => setDossierOpen(true)}>Ver dossier y cotizar <ArrowUpRight /></Button>
+diff --git a/src/styles.css b/src/styles.css
+index b9a5502..151ca17 100644
+--- a/src/styles.css
++++ b/src/styles.css
+@@ -183,6 +183,13 @@
+   .cinematic-veil { position: absolute; inset: 0; background: linear-gradient(90deg, oklch(0.12 0.01 60 / .42), transparent 60%), linear-gradient(0deg, oklch(0.12 0.01 60 / .22), transparent 45%); }
+   .cinematic-progress { position: absolute; z-index: 4; left: 0; bottom: 0; width: 100%; height: 2px; transform-origin: left; background: var(--gold); }
+   .cinematic-status { position: absolute; z-index: 3; left: 3rem; bottom: 2rem; color: oklch(0.98 0.005 70 / .7); font-size: .55rem; letter-spacing: .18em; }
++  .cinematic-loader { position: absolute; inset: 0; z-index: 6; display: grid; place-items: center; background: var(--ink); }
++  .loader-fill { position: relative; display: inline-block; font-family: var(--font-display); font-style: italic; font-size: clamp(1.05rem, 2.4vw, 1.7rem); letter-spacing: .03em; white-space: nowrap; color: oklch(0.98 0.005 70 / .28); }
++  .loader-fill::before { content: attr(data-text); position: absolute; inset: 0; color: var(--gold); clip-path: inset(0 calc(100% - var(--fill, 0%)) 0 0); transition: clip-path .2s linear; }
++  .scene-copy.scene-centered { left: 50%; right: auto; bottom: auto; top: 50%; translate: -50% -50%; width: min(50rem, 88vw); text-align: center; }
++  .scene-copy.scene-centered .scene-meta { justify-content: center; }
++  .scene-copy h1, .content-section h2, .spec-card h3, .faq-list button, .contact-section h2, .footer-brand strong { transition: color .35s ease; }
++  .scene-copy h1:hover, .content-section h2:hover, .spec-card:hover h3, .faq-list button:hover, .contact-section h2:hover { color: var(--gold); }
+   .scene-copy { position: absolute; z-index: 3; left: clamp(1.25rem, 8vw, 8rem); bottom: clamp(6rem, 16vh, 10rem); width: min(45rem, 83vw); color: var(--background); opacity: 0; visibility: hidden; }
+   .scene-copy.scene-initial { opacity: 1; visibility: visible; }
+   .scene-meta { display: flex; align-items: center; gap: 1.5rem; margin-bottom: 1.5rem; font-size: .62rem; font-weight: 600; letter-spacing: .2em; }
+@@ -285,7 +292,7 @@
+   .footer-brand span { font-family: var(--font-display); font-size: 1rem; font-style: italic; }
+   .footer-bottom { grid-column: 1 / -1; flex-direction: row; justify-content: space-between; margin-top: 4rem; padding-top: 1.5rem; border-top: 1px solid color-mix(in oklch, var(--background) 15%, transparent); }
+ 
+-  .booking-drawer { width: min(100%, 34rem); max-width: 34rem; padding: clamp(2rem, 5vw, 4rem); overflow-y: auto; background: color-mix(in oklch, var(--background) 94%, transparent); backdrop-filter: blur(18px); }
++  .booking-drawer { width: min(100%, 34rem); max-width: 34rem; height: 100dvh; padding: clamp(2rem, 5vw, 4rem); overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; background: color-mix(in oklch, var(--background) 94%, transparent); backdrop-filter: blur(18px); }
+   .booking-drawer h2 { margin-top: 1rem; line-height: 1; }
+   .booking-drawer [data-radix-dialog-description] { margin-top: .75rem; line-height: 1.7; }
+   .booking-form { display: flex; flex-direction: column; gap: 1.8rem; margin-top: 2.5rem; }

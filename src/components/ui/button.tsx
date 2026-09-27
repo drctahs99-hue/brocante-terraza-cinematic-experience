@@ -20,6 +20,7 @@ const buttonVariants = cva(
         glass: "border border-primary/35 bg-background/35 text-foreground backdrop-blur-md shadow-glass hover:border-primary hover:bg-background/60",
         selection: "border border-primary bg-primary text-primary-foreground",
         selectionOutline: "border border-border bg-transparent text-foreground hover:border-primary",
+        goldOutline: "border-2 border-primary bg-transparent text-primary backdrop-blur-sm hover:bg-primary hover:text-primary-foreground",
       },
       size: {
         default: "h-9 px-4 py-2",
@@ -27,6 +28,7 @@ const buttonVariants = cva(
         lg: "h-10 rounded-md px-8",
         icon: "h-9 w-9",
         luxury: "h-12 rounded-full px-7 text-[0.68rem] font-semibold uppercase tracking-[0.18em]",
+        xl: "h-16 rounded-full px-12 text-xs font-semibold uppercase tracking-[0.22em]",
       },
     },
     defaultVariants: {

@@ -183,6 +183,13 @@
   .cinematic-veil { position: absolute; inset: 0; background: linear-gradient(90deg, oklch(0.12 0.01 60 / .42), transparent 60%), linear-gradient(0deg, oklch(0.12 0.01 60 / .22), transparent 45%); }
   .cinematic-progress { position: absolute; z-index: 4; left: 0; bottom: 0; width: 100%; height: 2px; transform-origin: left; background: var(--gold); }
   .cinematic-status { position: absolute; z-index: 3; left: 3rem; bottom: 2rem; color: oklch(0.98 0.005 70 / .7); font-size: .55rem; letter-spacing: .18em; }
+  .cinematic-loader { position: absolute; inset: 0; z-index: 6; display: grid; place-items: center; background: var(--ink); }
+  .loader-fill { position: relative; display: inline-block; font-family: var(--font-display); font-style: italic; font-size: clamp(1.05rem, 2.4vw, 1.7rem); letter-spacing: .03em; white-space: nowrap; color: oklch(0.98 0.005 70 / .28); }
+  .loader-fill::before { content: attr(data-text); position: absolute; inset: 0; color: var(--gold); clip-path: inset(0 calc(100% - var(--fill, 0%)) 0 0); transition: clip-path .2s linear; }
+  .scene-copy.scene-centered { left: 50%; right: auto; bottom: auto; top: 50%; translate: -50% -50%; width: min(50rem, 88vw); text-align: center; }
+  .scene-copy.scene-centered .scene-meta { justify-content: center; }
+  .scene-copy h1, .content-section h2, .spec-card h3, .faq-list button, .contact-section h2, .footer-brand strong { transition: color .35s ease; }
+  .scene-copy h1:hover, .content-section h2:hover, .spec-card:hover h3, .faq-list button:hover, .contact-section h2:hover { color: var(--gold); }
   .scene-copy { position: absolute; z-index: 3; left: clamp(1.25rem, 8vw, 8rem); bottom: clamp(6rem, 16vh, 10rem); width: min(45rem, 83vw); color: var(--background); opacity: 0; visibility: hidden; }
   .scene-copy.scene-initial { opacity: 1; visibility: visible; }
   .scene-meta { display: flex; align-items: center; gap: 1.5rem; margin-bottom: 1.5rem; font-size: .62rem; font-weight: 600; letter-spacing: .2em; }
@@ -285,7 +292,7 @@
   .footer-brand span { font-family: var(--font-display); font-size: 1rem; font-style: italic; }
   .footer-bottom { grid-column: 1 / -1; flex-direction: row; justify-content: space-between; margin-top: 4rem; padding-top: 1.5rem; border-top: 1px solid color-mix(in oklch, var(--background) 15%, transparent); }
 
-  .booking-drawer { width: min(100%, 34rem); max-width: 34rem; padding: clamp(2rem, 5vw, 4rem); overflow-y: auto; background: color-mix(in oklch, var(--background) 94%, transparent); backdrop-filter: blur(18px); }
+  .booking-drawer { width: min(100%, 34rem); max-width: 34rem; height: 100dvh; padding: clamp(2rem, 5vw, 4rem); overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; background: color-mix(in oklch, var(--background) 94%, transparent); backdrop-filter: blur(18px); }
   .booking-drawer h2 { margin-top: 1rem; line-height: 1; }
   .booking-drawer [data-radix-dialog-description] { margin-top: .75rem; line-height: 1.7; }
   .booking-form { display: flex; flex-direction: column; gap: 1.8rem; margin-top: 2.5rem; }
