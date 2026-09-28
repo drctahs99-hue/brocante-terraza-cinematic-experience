@@ -47,7 +47,7 @@ export function BookingDrawer({ open, onOpenChange, initialEvent, initialDate }:
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="booking-drawer" side="right">
+      <SheetContent className="booking-drawer" side="right" data-lenis-prevent>
         <SheetHeader>
           <span className="eyebrow">PROPUESTA PERSONALIZADA</span>
           <SheetTitle className="font-display text-4xl font-normal">Diseñemos su celebración.</SheetTitle>

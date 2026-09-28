@@ -17,9 +17,9 @@ import { eventFormMap, venue } from "@/data/venue-config";
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Brocante Terraza | Bodas Íntimas en Lomas de Chapultepec" },
+      { title: "Demo - ScrollCine-Brocante Terraza" },
       { name: "description", content: "Terraza privada en Lomas de Chapultepec para bodas íntimas, cenas privadas y experiencias de marca de hasta 120 invitados." },
-      { property: "og:title", content: "Brocante Terraza — El arte de recibir" },
+      { property: "og:title", content: "Demo - ScrollCine-Brocante Terraza" },
       { property: "og:description", content: "Una terraza privada para celebraciones íntimas en Lomas de Chapultepec, Ciudad de México." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
@@ -60,6 +60,9 @@ function Index() {
       </header>
 
       <CinematicStage onBook={() => openBooking()} onCompleteChange={handleIntroComplete} />
+      <div className="site-atmosphere">
+      <span className="atmosphere-orb orb-a" aria-hidden="true" />
+      <span className="atmosphere-orb orb-b" aria-hidden="true" />
       <AtmosphereMarquee />
 
       <section id="ficha" className="content-section specs-section">
@@ -70,7 +73,7 @@ function Index() {
         </Reveal3D>
         <div className="spec-grid">
           {specs.map(([number, label, value, description], index) => (
-            <Reveal3D as="article" key={label} className="spec-card" data-cursor delay={index * 0.08}>
+            <Reveal3D as="article" key={label} className="spec-card" data-cursor tilt delay={index * 0.08}>
               <span>{number}</span><p>{label}</p><h3>{value}</h3><small>{description}</small>
             </Reveal3D>
           ))}
@@ -109,6 +112,8 @@ function Index() {
           <Button variant="glass" size="luxury" onClick={() => setDossierOpen(true)}>Ver dossier y cotizar <ArrowUpRight /></Button>
         </div>
       </section>
+
+      </div>
 
       <footer>
         <div className="footer-brand"><strong>BROCANTE</strong><span>{venue.descriptor}</span></div>

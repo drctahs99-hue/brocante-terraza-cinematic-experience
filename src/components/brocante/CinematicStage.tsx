@@ -1,20 +1,13 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowDown, ArrowUpRight } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { ArrowDown } from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
 import arrival from "@/assets/brocante-arrival.jpg";
+import { SceneOverlay } from "./SceneOverlay";
+import { sceneIndexAt } from "./scenes";
 
 const TOTAL_FRAMES = 480;
 const FRAMES_URL = "https://cdn.jsdelivr.net/gh/drctahs99-hue/frames@v1/Desktop";
 const CONCURRENCY = 6;
-
-type Scene = { start: number; end: number; tag: string; title: string; text: string; centered?: boolean };
-
-const scenes: Scene[] = [
-  { start: 0, end: 0.33, tag: "LOMAS–VIRREYES · CDMX", title: "L'Art de Recevoir.", text: "Una terraza privada concebida para bodas íntimas y celebraciones que trascienden el tiempo.", centered: true },
-  { start: 0.33, end: 0.66, tag: "DISEÑO Y MATERIA", title: "La Belleza en el Detalle.", text: "Texturas orgánicas, cantera y luz natural en un entorno exclusivo de hasta 120 invitados." },
-  { start: 0.66, end: 0.9, tag: "ESPACIOS VERSÁTILES", title: "Entre Cielo y Arquitectura.", text: "Salón interior climatizado, asador de autor, horno de leña y vistas panorámicas del poniente." },
-  { start: 0.9, end: 1, tag: "TU FECHA EN BROCANTE", title: "Vivan la Experiencia.", text: "" },
-];
 
 type Props = { onBook: () => void; onCompleteChange: (complete: boolean) => void };
 
@@ -22,16 +15,19 @@ function clampFrame(value: number) {
   return Math.min(TOTAL_FRAMES - 1, Math.max(0, Math.round(value)));
 }
 
+const facts = [["120", "invitados"], ["Interior + terraza", "un solo recorrido"], ["Catering de autor", "a su medida"]] as const;
+
 export function CinematicStage({ onBook, onCompleteChange }: Props) {
   const sectionRef = useRef<HTMLElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const overlayRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const progressRef = useRef<HTMLDivElement>(null);
   const cache = useRef(new Map<number, ImageBitmap>());
   const targetFrame = useRef(0);
+  const sceneRef = useRef(0);
   const rafId = useRef<number | undefined>(undefined);
-  const [progress, setProgress] = useState(0);
   const [loadedCount, setLoadedCount] = useState(0);
   const [ready, setReady] = useState(false);
+  const [activeScene, setActiveScene] = useState(0);
   const [sequenceAvailable, setSequenceAvailable] = useState(true);
 
   useEffect(() => {
@@ -44,7 +40,6 @@ export function CinematicStage({ onBook, onCompleteChange }: Props) {
     let destroyed = false;
 
     const poster = new Image();
-    poster.crossOrigin = "anonymous";
     poster.src = arrival;
 
     const cover = (source: CanvasImageSource) => {
@@ -72,8 +67,7 @@ export function CinematicStage({ onBook, onCompleteChange }: Props) {
       return undefined;
     };
 
-    // Draw loop: always renders only the most recently requested frame,
-    // decoupled from scroll event rate, clamped to the valid range.
+    // Only the most recently requested frame is drawn, always inside 0–479.
     const draw = () => {
       const index = clampFrame(targetFrame.current);
       const image = cache.current.get(index) ?? nearest(index);
@@ -101,10 +95,11 @@ export function CinematicStage({ onBook, onCompleteChange }: Props) {
           if (index === 0) setSequenceAvailable(false);
         });
 
-    // Preload the entire 480-frame sequence once, keep it all in memory
-    // (never evicted), then unlock scroll only once it is fully ready.
+    // Frame 1 first (it becomes the intro background), then the whole
+    // sequence is kept in memory and scroll unlocks once it is complete.
     const loadAll = async () => {
-      let cursor = 0;
+      await loadFrame(0);
+      let cursor = 1;
       const workers = Array.from({ length: CONCURRENCY }, async () => {
         while (cursor < TOTAL_FRAMES && !destroyed) {
           const index = cursor;
@@ -143,25 +138,16 @@ export function CinematicStage({ onBook, onCompleteChange }: Props) {
           ease: "none",
           scrollTrigger: { trigger: section, start: "top top", end: "+=600%", pin: true, scrub: 0.8 },
           onUpdate: () => {
+            const progress = state.frame / (TOTAL_FRAMES - 1);
             targetFrame.current = state.frame;
-            setProgress(state.frame / (TOTAL_FRAMES - 1));
+            if (progressRef.current) progressRef.current.style.transform = `scaleX(${progress})`;
+            const next = sceneIndexAt(progress);
+            if (next !== sceneRef.current) {
+              sceneRef.current = next;
+              setActiveScene(next);
+            }
             onCompleteChange(state.frame >= TOTAL_FRAMES - 3);
           },
-        });
-        scenes.forEach((scene, index) => {
-          const node = overlayRefs.current[index];
-          if (!node) return;
-          gsap.set(node, { autoAlpha: index === 0 ? 1 : 0, y: index === 0 ? 0 : 24 });
-          gsap.to(node, {
-            autoAlpha: 1,
-            y: 0,
-            scrollTrigger: {
-              trigger: section,
-              start: `${scene.start * 600}% top`,
-              end: `${scene.end * 600}% top`,
-              toggleActions: "play reverse play reverse",
-            },
-          });
         });
         cleanup = () => {
           trigger.kill();
@@ -182,50 +168,44 @@ export function CinematicStage({ onBook, onCompleteChange }: Props) {
     };
   }, [onCompleteChange]);
 
-  // Block page scroll entirely until the full sequence is cached, so the
-  // first scroll the visitor makes is already perfectly smooth.
+  // Page scroll stays locked until every frame is cached.
   useEffect(() => {
-    if (ready || !sequenceAvailable) {
-      document.body.style.removeProperty("overflow");
-    } else {
-      document.body.style.overflow = "hidden";
-    }
+    if (ready || !sequenceAvailable) document.body.style.removeProperty("overflow");
+    else document.body.style.overflow = "hidden";
     return () => { document.body.style.removeProperty("overflow"); };
   }, [ready, sequenceAvailable]);
 
   const loadPercent = Math.min(100, Math.round((loadedCount / TOTAL_FRAMES) * 100));
+  const loaderLabel = `Preparando el recorrido · ${loadPercent}%`;
+  const showIntro = !ready && sequenceAvailable;
 
   return (
-    <section ref={sectionRef} id="terraza" className="cinematic-stage">
+    <section ref={sectionRef} id="terraza" className={`cinematic-stage${showIntro ? " is-loading" : ""}`} style={{ backgroundImage: `url(${arrival})` }}>
       <canvas ref={canvasRef} aria-label="Recorrido cinematográfico por Brocante Terraza" />
       <div className="cinematic-veil" />
-      <div className="cinematic-progress" style={{ transform: `scaleX(${progress})` }} />
-      {!ready && sequenceAvailable && (
-        <div className="cinematic-loader" role="status" aria-live="polite">
-          <span className="loader-fill" data-text="Preparando la experiencia" style={{ ["--fill" as string]: `${loadPercent}%` }}>
-            Preparando la experiencia
-          </span>
-        </div>
-      )}
-      {ready && <span className="cinematic-status">{sequenceAvailable ? "480 CUADROS · DESLIZA PARA RECORRER" : "BROCANTE · LOMAS–VIRREYES"}</span>}
-      {scenes.map((scene, index) => (
-        <div
-          key={scene.title}
-          ref={(node) => {
-            overlayRefs.current[index] = node;
-          }}
-          className={`scene-copy${index === 0 ? " scene-initial" : ""}${scene.centered ? " scene-centered" : ""}`}
-        >
-          <div className="scene-meta"><span>{scene.tag}</span></div>
-          <h1>{scene.title}</h1>
-          {scene.text && <p>{scene.text}</p>}
-          {index === 3 && (
-            <div className="scene-actions">
-              <Button variant="goldOutline" size="xl" onClick={onBook}>Agendar una cita <ArrowUpRight /></Button>
-            </div>
-          )}
-        </div>
-      ))}
+      <div ref={progressRef} className="cinematic-progress" />
+
+      <AnimatePresence>
+        {showIntro && (
+          <motion.div
+            key="intro"
+            className="cinematic-intro"
+            role="status"
+            aria-live="polite"
+            exit={{ opacity: 0, filter: "blur(12px)", scale: 1.03, transition: { duration: 0.7 } }}
+          >
+            <span className="intro-eyebrow">BROCANTE TERRAZA · LOMAS DE CHAPULTEPEC</span>
+            <h1 className="intro-title">Una terraza privada para las fechas que merecen <em>quedarse.</em></h1>
+            <p className="intro-copy">Bodas íntimas, cenas privadas y celebraciones de hasta 120 invitados entre cantera, vegetación y luz de poniente. En unos segundos podrán recorrer la terraza con solo deslizar.</p>
+            <ul className="intro-facts">
+              {facts.map(([value, label]) => <li key={value}><strong>{value}</strong><span>{label}</span></li>)}
+            </ul>
+            <span className="loader-fill" data-text={loaderLabel} style={{ ["--fill" as string]: `${loadPercent}%` }}>{loaderLabel}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {ready && <SceneOverlay index={activeScene} onBook={onBook} />}
       <a className="scroll-cue" href="#ficha" aria-label="Continuar a la ficha técnica"><ArrowDown /></a>
     </section>
   );

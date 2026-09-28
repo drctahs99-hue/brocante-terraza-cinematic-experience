@@ -8,7 +8,7 @@ type Props = { open: boolean; onOpenChange: (open: boolean) => void };
 export function DossierDialog({ open, onOpenChange }: Props) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="dossier-dialog">
+      <DialogContent className="dossier-dialog" data-lenis-prevent>
         <DialogTitle className="font-display">Brocante Terraza</DialogTitle>
         <DialogDescription>Ficha arquitectónica y gastronómica</DialogDescription>
         <div className="dossier-rule" />
