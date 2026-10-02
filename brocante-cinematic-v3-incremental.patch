@@ -1,0 +1,892 @@
+diff --git a/src/components/brocante/AvailabilityCalendar.tsx b/src/components/brocante/AvailabilityCalendar.tsx
+index 4fb1ca2..896e837 100644
+--- a/src/components/brocante/AvailabilityCalendar.tsx
++++ b/src/components/brocante/AvailabilityCalendar.tsx
+@@ -1,6 +1,7 @@
+ import { useEffect, useState } from "react";
+ import { Button } from "@/components/ui/button";
+ import { Reveal3D } from "@/components/brocante/Reveal3D";
++import { getReservedDates } from "@/lib/admin.server";
+ 
+ type Props = { selectedDate: string; onSelectDate: (date: string) => void; onContinue: () => void };
+ 
+@@ -11,28 +12,25 @@ function localIso(date: Date) {
+   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+ }
+ 
+-// Always computed client-side, after mount, from the visitor's own local
+-// clock — never during server rendering — so the three visible months can
+-// never differ between the first paint and the browser's own date.
+-function buildCalendar() {
++// The three visible months, computed client-side only (after mount) from
++// the visitor's own local clock — never during server rendering — so they
++// can never differ between the first paint and the browser's own date.
++function buildMonths() {
+   const now = new Date();
+-  const nextMonths = Array.from({ length: 3 }, (_, offset) => new Date(now.getFullYear(), now.getMonth() + offset, 1));
+-  const weekends: string[] = [];
+-  nextMonths.forEach((month) => {
+-    const days = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
+-    for (let day = 1; day <= days; day += 1) {
+-      const candidate = new Date(month.getFullYear(), month.getMonth(), day);
+-      if ((candidate.getDay() === 6 || candidate.getDay() === 0) && candidate > now) weekends.push(localIso(candidate));
+-    }
+-  });
+-  return { months: nextMonths, reserved: new Set(weekends.filter((_, index) => [1, 3, 6, 9, 12, 15, 18].includes(index))) };
++  return Array.from({ length: 3 }, (_, offset) => new Date(now.getFullYear(), now.getMonth() + offset, 1));
+ }
+ 
+ export function AvailabilityCalendar({ selectedDate, onSelectDate, onContinue }: Props) {
+-  const [calendar, setCalendar] = useState<{ months: Date[]; reserved: Set<string> } | null>(null);
++  const [months, setMonths] = useState<Date[] | null>(null);
++  const [reserved, setReserved] = useState<Set<string>>(new Set());
+ 
+   useEffect(() => {
+-    setCalendar(buildCalendar());
++    setMonths(buildMonths());
++    // Real reserved dates, set by the venue's own team from the private
++    // admin panel — not a random demo placeholder.
++    getReservedDates()
++      .then((res) => setReserved(new Set(res.dates)))
++      .catch(() => setReserved(new Set()));
+   }, []);
+ 
+   return (
+@@ -43,9 +41,9 @@ export function AvailabilityCalendar({ selectedDate, onSelectDate, onContinue }:
+         <p>Consulta inicial de fechas para los próximos tres meses. La disponibilidad se confirma personalmente con nuestro equipo.</p>
+         <div className="calendar-legend"><span><i className="available-dot" />Disponible</span><span><i className="reserved-dot" />Reservado</span></div>
+       </Reveal3D>
+-      {calendar && (
++      {months && (
+         <div className="calendar-grid">
+-          {calendar.months.map((month) => {
++          {months.map((month) => {
+             const days = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
+             const lead = (new Date(month.getFullYear(), month.getMonth(), 1).getDay() + 6) % 7;
+             return (
+@@ -56,17 +54,17 @@ export function AvailabilityCalendar({ selectedDate, onSelectDate, onContinue }:
+                   {Array.from({ length: lead }, (_, index) => <span key={`blank-${index}`} />)}
+                   {Array.from({ length: days }, (_, index) => {
+                     const date = new Date(month.getFullYear(), month.getMonth(), index + 1);
+-                    const iso = localIso(date);
+-                    const isReserved = calendar.reserved.has(iso);
++                    const isoDate = localIso(date);
++                    const isReserved = reserved.has(isoDate);
+                     const past = date < new Date(new Date().setHours(0, 0, 0, 0));
+                     return (
+                       <Button
+-                        key={iso}
++                        key={isoDate}
+                         variant="ghost"
+                         size="icon"
+                         disabled={isReserved || past}
+-                        className={`${isReserved ? "reserved" : "available"} ${selectedDate === iso ? "selected" : ""}`}
+-                        onClick={() => onSelectDate(iso)}
++                        className={`${isReserved ? "reserved" : "available"} ${selectedDate === isoDate ? "selected" : ""}`}
++                        onClick={() => onSelectDate(isoDate)}
+                         aria-label={`${index + 1} de ${monthNames[month.getMonth()]}: ${isReserved ? "Reservado" : "Disponible"}`}
+                         title={isReserved ? "Reservado" : "Disponible"}
+                       >
+diff --git a/src/components/brocante/CinematicStage.tsx b/src/components/brocante/CinematicStage.tsx
+index 7ef80b0..52fc7f5 100644
+--- a/src/components/brocante/CinematicStage.tsx
++++ b/src/components/brocante/CinematicStage.tsx
+@@ -2,12 +2,16 @@ import { useEffect, useRef, useState } from "react";
+ import { ArrowDown } from "lucide-react";
+ import { AnimatePresence, motion } from "motion/react";
+ import arrival from "@/assets/brocante-arrival.jpg";
+-import { SceneOverlay } from "./SceneOverlay";
+-import { sceneIndexAt } from "./scenes";
++import { WaveGoldText } from "./WaveGoldText";
++import { activePhaseIndex, isTextVisible, phases } from "./phases";
+ 
+ const TOTAL_FRAMES = 480;
+-const FRAMES_URL = "https://cdn.jsdelivr.net/gh/drctahs99-hue/frames@v1/Desktop";
++const FRAMES_URL = "https://cdn.jsdelivr.net/gh/drctahs99-hue/frames@v2/Desktop";
+ const CONCURRENCY = 6;
++// Scroll unlocks as soon as either condition is met, whichever comes
++// first — the visitor is never forced to wait for the full sequence.
++const EARLY_UNLOCK_RATIO = 0.12;
++const EARLY_UNLOCK_MAX_WAIT_MS = 1300;
+ 
+ type Props = { onBook: () => void; onCompleteChange: (complete: boolean) => void };
+ 
+@@ -15,7 +19,7 @@ function clampFrame(value: number) {
+   return Math.min(TOTAL_FRAMES - 1, Math.max(0, Math.round(value)));
+ }
+ 
+-const facts = [["120", "invitados"], ["Interior + terraza", "un solo recorrido"], ["Catering de autor", "a su medida"]] as const;
++const facts = [["120", "invitados"], ["Un solo plano", "sin cortes"], ["Golden hour", "CDMX"]] as const;
+ 
+ export function CinematicStage({ onBook, onCompleteChange }: Props) {
+   const sectionRef = useRef<HTMLElement>(null);
+@@ -23,11 +27,14 @@ export function CinematicStage({ onBook, onCompleteChange }: Props) {
+   const progressRef = useRef<HTMLDivElement>(null);
+   const cache = useRef(new Map<number, ImageBitmap>());
+   const targetFrame = useRef(0);
+-  const sceneRef = useRef(0);
++  const phaseRef = useRef(0);
+   const rafId = useRef<number | undefined>(undefined);
+   const [loadedCount, setLoadedCount] = useState(0);
+-  const [ready, setReady] = useState(false);
+-  const [activeScene, setActiveScene] = useState(0);
++  const [canScroll, setCanScroll] = useState(false);
++  const [fullyLoaded, setFullyLoaded] = useState(false);
++  const [dismissed, setDismissed] = useState(false);
++  const [activePhase, setActivePhase] = useState(0);
++  const [progress, setProgress] = useState(0);
+   const [sequenceAvailable, setSequenceAvailable] = useState(true);
+ 
+   useEffect(() => {
+@@ -67,7 +74,9 @@ export function CinematicStage({ onBook, onCompleteChange }: Props) {
+       return undefined;
+     };
+ 
+-    // Only the most recently requested frame is drawn, always inside 0–479.
++    // Only the most recently requested frame is drawn, always inside
++    // 0–479. If it isn't cached yet the nearest cached frame stands in, so
++    // scrolling ahead of the preload is always visually safe.
+     const draw = () => {
+       const index = clampFrame(targetFrame.current);
+       const image = cache.current.get(index) ?? nearest(index);
+@@ -95,8 +104,6 @@ export function CinematicStage({ onBook, onCompleteChange }: Props) {
+           if (index === 0) setSequenceAvailable(false);
+         });
+ 
+-    // Frame 1 first (it becomes the intro background), then the whole
+-    // sequence is kept in memory and scroll unlocks once it is complete.
+     const loadAll = async () => {
+       await loadFrame(0);
+       let cursor = 1;
+@@ -108,15 +115,19 @@ export function CinematicStage({ onBook, onCompleteChange }: Props) {
+         }
+       });
+       await Promise.all(workers);
+-      if (!destroyed) setReady(true);
++      if (!destroyed) { setFullyLoaded(true); setCanScroll(true); }
+     };
+ 
++    let unlockTimer: ReturnType<typeof setTimeout> | undefined;
+     if (reduced) {
+       onCompleteChange(true);
+-      setReady(true);
++      setFullyLoaded(true);
++      setCanScroll(true);
++      setDismissed(true);
+       void loadFrame(0);
+     } else {
+       void loadAll();
++      unlockTimer = setTimeout(() => { if (!destroyed) setCanScroll(true); }, EARLY_UNLOCK_MAX_WAIT_MS);
+     }
+ 
+     let cleanup = () => undefined;
+@@ -138,13 +149,15 @@ export function CinematicStage({ onBook, onCompleteChange }: Props) {
+           ease: "none",
+           scrollTrigger: { trigger: section, start: "top top", end: "+=600%", pin: true, scrub: 0.8 },
+           onUpdate: () => {
+-            const progress = state.frame / (TOTAL_FRAMES - 1);
++            const p = state.frame / (TOTAL_FRAMES - 1);
+             targetFrame.current = state.frame;
+-            if (progressRef.current) progressRef.current.style.transform = `scaleX(${progress})`;
+-            const next = sceneIndexAt(progress);
+-            if (next !== sceneRef.current) {
+-              sceneRef.current = next;
+-              setActiveScene(next);
++            setProgress(p);
++            if (progressRef.current) progressRef.current.style.transform = `scaleX(${p})`;
++            if (p > 0.004) setDismissed(true);
++            const nextPhase = activePhaseIndex(p);
++            if (nextPhase !== phaseRef.current) {
++              phaseRef.current = nextPhase;
++              setActivePhase(nextPhase);
+             }
+             onCompleteChange(state.frame >= TOTAL_FRAMES - 3);
+           },
+@@ -160,6 +173,7 @@ export function CinematicStage({ onBook, onCompleteChange }: Props) {
+ 
+     return () => {
+       destroyed = true;
++      if (unlockTimer) clearTimeout(unlockTimer);
+       cleanup();
+       if (rafId.current) cancelAnimationFrame(rafId.current);
+       cache.current.forEach((bitmap) => bitmap.close());
+@@ -168,16 +182,19 @@ export function CinematicStage({ onBook, onCompleteChange }: Props) {
+     };
+   }, [onCompleteChange]);
+ 
+-  // Page scroll stays locked until every frame is cached.
++  // Body scroll stays locked only for the brief early-unlock window (a
++  // small ratio of frames loaded, or ~1.3s — whichever comes first), never
++  // for the whole preload. The intro card itself is dismissed the instant
++  // the visitor actually scrolls, even mid-animation.
+   useEffect(() => {
+-    if (ready || !sequenceAvailable) document.body.style.removeProperty("overflow");
++    if (canScroll || !sequenceAvailable) document.body.style.removeProperty("overflow");
+     else document.body.style.overflow = "hidden";
+     return () => { document.body.style.removeProperty("overflow"); };
+-  }, [ready, sequenceAvailable]);
++  }, [canScroll, sequenceAvailable]);
+ 
+   const loadPercent = Math.min(100, Math.round((loadedCount / TOTAL_FRAMES) * 100));
+   const loaderLabel = `Preparando el recorrido · ${loadPercent}%`;
+-  const showIntro = !ready && sequenceAvailable;
++  const showIntro = !dismissed && sequenceAvailable;
+ 
+   return (
+     <section ref={sectionRef} id="terraza" className={`cinematic-stage${showIntro ? " is-loading" : ""}`} style={{ backgroundImage: `url(${arrival})` }}>
+@@ -192,20 +209,25 @@ export function CinematicStage({ onBook, onCompleteChange }: Props) {
+             className="cinematic-intro"
+             role="status"
+             aria-live="polite"
+-            exit={{ opacity: 0, filter: "blur(12px)", scale: 1.03, transition: { duration: 0.7 } }}
++            exit={{ opacity: 0, filter: "blur(12px)", scale: 1.03, transition: { duration: 0.5 } }}
+           >
+             <span className="intro-eyebrow">BROCANTE TERRAZA · LOMAS DE CHAPULTEPEC</span>
+             <h1 className="intro-title">Una terraza privada para las fechas que merecen <em>quedarse.</em></h1>
+-            <p className="intro-copy">Bodas íntimas, cenas privadas y celebraciones de hasta 120 invitados entre cantera, vegetación y luz de poniente. En unos segundos podrán recorrer la terraza con solo deslizar.</p>
++            <p className="intro-copy">Bodas íntimas, cenas privadas y celebraciones de hasta 120 invitados entre cantera, vegetación y luz de poniente. Deslicen para recorrerla en un solo plano.</p>
+             <ul className="intro-facts">
+               {facts.map(([value, label]) => <li key={value}><strong>{value}</strong><span>{label}</span></li>)}
+             </ul>
+-            <span className="loader-fill" data-text={loaderLabel} style={{ ["--fill" as string]: `${loadPercent}%` }}>{loaderLabel}</span>
++            {!fullyLoaded && (
++              <span className="loader-fill" data-text={loaderLabel} style={{ ["--fill" as string]: `${loadPercent}%` }}>{loaderLabel}</span>
++            )}
+           </motion.div>
+         )}
+       </AnimatePresence>
+ 
+-      {ready && <SceneOverlay index={activeScene} onBook={onBook} />}
++      {phases.map((phase, index) => (
++        <WaveGoldText key={phase.key} text={phase.title} cta={phase.cta} visible={dismissed && isTextVisible(progress, index) && activePhase === index} onBook={onBook} />
++      ))}
++
+       <a className="scroll-cue" href="#ficha" aria-label="Continuar a la ficha técnica"><ArrowDown /></a>
+     </section>
+   );
+diff --git a/src/components/brocante/SceneOverlay.tsx b/src/components/brocante/SceneOverlay.tsx
+deleted file mode 100644
+index e0b4ddb..0000000
+--- a/src/components/brocante/SceneOverlay.tsx
++++ /dev/null
+@@ -1,71 +0,0 @@
+-import { AnimatePresence, motion, useReducedMotion, type Variants } from "motion/react";
+-import { ArrowUpRight } from "lucide-react";
+-import { Button } from "@/components/ui/button";
+-import { scenes, type Corner } from "./scenes";
+-
+-const offsets: Record<Corner, { x: number; y: number; rotateY: number }> = {
+-  "top-left": { x: -70, y: -36, rotateY: -28 },
+-  "bottom-right": { x: 70, y: 36, rotateY: 28 },
+-  "bottom-left": { x: -70, y: 36, rotateY: -28 },
+-  "top-right": { x: 70, y: -36, rotateY: 28 },
+-};
+-
+-const layer: Variants = {
+-  hidden: {},
+-  show: { transition: { staggerChildren: 0.09, delayChildren: 0.05 } },
+-  exit: { transition: { staggerChildren: 0.03, staggerDirection: -1 } },
+-};
+-
+-const rise: Variants = {
+-  hidden: { opacity: 0, y: 40, rotateX: -75, filter: "blur(10px)" },
+-  show: { opacity: 1, y: 0, rotateX: 0, filter: "blur(0px)", transition: { duration: 0.95, ease: [0.16, 1, 0.3, 1] } },
+-  exit: { opacity: 0, y: -24, rotateX: 45, filter: "blur(8px)", transition: { duration: 0.32, ease: "easeIn" } },
+-};
+-
+-const card: Variants = {
+-  hidden: (corner: Corner) => ({ opacity: 0, x: offsets[corner].x, y: offsets[corner].y, rotateY: offsets[corner].rotateY, scale: 0.94 }),
+-  show: { opacity: 1, x: 0, y: 0, rotateY: 0, scale: 1, transition: { duration: 1, ease: [0.16, 1, 0.3, 1] } },
+-  exit: (corner: Corner) => ({ opacity: 0, x: offsets[corner].x * 0.5, y: offsets[corner].y * 0.5, transition: { duration: 0.3, ease: "easeIn" } }),
+-};
+-
+-const still: Variants = { hidden: { opacity: 1 }, show: { opacity: 1 }, exit: { opacity: 0 } };
+-
+-export function SceneOverlay({ index, onBook }: { index: number; onBook: () => void }) {
+-  const reduced = useReducedMotion();
+-  const scene = scenes[index] ?? scenes[0]!;
+-  const words = scene.title.split(" ");
+-  const item = reduced ? still : rise;
+-
+-  return (
+-    <AnimatePresence mode="wait">
+-      <motion.div key={index} className="scene-layer" variants={reduced ? still : layer} initial="hidden" animate="show" exit="exit">
+-        <div className={`scene-headline${index === 0 ? " is-hero" : ""}`}>
+-          <motion.span className="scene-tag" variants={item}>{scene.tag}</motion.span>
+-          <h1 aria-label={scene.title}>
+-            {words.map((word, wordIndex) => (
+-              <span className="word-mask" key={`${word}-${wordIndex}`} aria-hidden="true">
+-                <motion.span className={wordIndex === words.length - 1 ? "word word-accent" : "word"} variants={item}>{word}</motion.span>
+-              </span>
+-            ))}
+-          </h1>
+-          {scene.text && <motion.p variants={item}>{scene.text}</motion.p>}
+-          {scene.bigCta && (
+-            <motion.div className="scene-actions" variants={item}>
+-              <Button variant="goldOutline" size="xl" onClick={onBook}>Agendar una cita <ArrowUpRight /></Button>
+-            </motion.div>
+-          )}
+-        </div>
+-
+-        <motion.aside className={`scene-note note-${scene.corner}`} custom={scene.corner} variants={reduced ? still : card}>
+-          <span className="note-index">{String(index + 1).padStart(2, "0")} — 04</span>
+-          <strong className="note-stat">{scene.stat}</strong>
+-          <span className="note-label">{scene.statLabel}</span>
+-          <p>{scene.note}</p>
+-          {!scene.bigCta && (
+-            <Button variant="goldOutline" size="luxury" onClick={onBook}>Agendar una cita <ArrowUpRight /></Button>
+-          )}
+-        </motion.aside>
+-      </motion.div>
+-    </AnimatePresence>
+-  );
+-}
+diff --git a/src/components/brocante/ScrollReveal.tsx b/src/components/brocante/ScrollReveal.tsx
+index f3a0b43..23e12c2 100644
+--- a/src/components/brocante/ScrollReveal.tsx
++++ b/src/components/brocante/ScrollReveal.tsx
+@@ -1,14 +1,40 @@
+ import { useEffect } from "react";
+ 
++const SELECTOR = ".reveal-item, .content-section > *";
++
+ export function ScrollReveal() {
+   useEffect(() => {
+     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+-    const nodes = document.querySelectorAll<HTMLElement>(".reveal-item, .content-section > *");
+-    const observer = new IntersectionObserver((entries) => {
+-      entries.forEach((entry) => entry.target.classList.toggle("is-revealed", entry.isIntersecting));
+-    }, { threshold: 0.12, rootMargin: "0px 0px -8%" });
+-    nodes.forEach((node) => observer.observe(node));
+-    return () => observer.disconnect();
++
++    const seen = new WeakSet<Element>();
++    const observer = new IntersectionObserver(
++      (entries) => {
++        entries.forEach((entry) => entry.target.classList.toggle("is-revealed", entry.isIntersecting));
++      },
++      { threshold: 0.12, rootMargin: "0px 0px -8%" },
++    );
++
++    const watch = (node: Element) => {
++      if (seen.has(node)) return;
++      seen.add(node);
++      observer.observe(node);
++    };
++
++    document.querySelectorAll<HTMLElement>(SELECTOR).forEach(watch);
++
++    // Content that mounts after the initial paint (the calendar grid once
++    // its client-only effect runs, dialogs, async sections, etc.) would
++    // otherwise never be observed and would stay invisible forever — so we
++    // keep watching the DOM for anything new that matches the selector.
++    const mutationObserver = new MutationObserver(() => {
++      document.querySelectorAll<HTMLElement>(SELECTOR).forEach(watch);
++    });
++    mutationObserver.observe(document.body, { childList: true, subtree: true });
++
++    return () => {
++      observer.disconnect();
++      mutationObserver.disconnect();
++    };
+   }, []);
+   return null;
+-}
+\ No newline at end of file
++}
+diff --git a/src/components/brocante/WaveGoldText.tsx b/src/components/brocante/WaveGoldText.tsx
+new file mode 100644
+index 0000000..e71033c
+--- /dev/null
++++ b/src/components/brocante/WaveGoldText.tsx
+@@ -0,0 +1,52 @@
++import { AnimatePresence, motion, useReducedMotion } from "motion/react";
++import { ArrowUpRight } from "lucide-react";
++import { Button } from "@/components/ui/button";
++
++type Props = { text: string; visible: boolean; cta: boolean | undefined; onBook: () => void };
++
++// A gold headline that reveals letter by letter in a small rising "wave",
++// positioned top-center. Falls back to a plain fade for reduced motion.
++export function WaveGoldText({ text, visible, cta, onBook }: Props) {
++  const reduced = useReducedMotion();
++  const letters = Array.from(text);
++
++  return (
++    <AnimatePresence>
++      {visible && (
++        <motion.div
++          className="wave-text-wrap"
++          initial={{ opacity: 0 }}
++          animate={{ opacity: 1 }}
++          exit={{ opacity: 0, transition: { duration: 0.35 } }}
++        >
++          <h2 className="wave-text" aria-label={text}>
++            {reduced
++              ? text
++              : letters.map((char, index) => (
++                  <motion.span
++                    key={`${char}-${index}`}
++                    className="wave-letter"
++                    initial={{ y: 26, opacity: 0, rotate: 5 }}
++                    animate={{ y: 0, opacity: 1, rotate: 0 }}
++                    exit={{ y: -16, opacity: 0, transition: { duration: 0.3 } }}
++                    transition={{ duration: 0.65, delay: index * 0.032, ease: [0.16, 1, 0.3, 1] }}
++                  >
++                    {char === " " ? "\u00A0" : char}
++                  </motion.span>
++                ))}
++          </h2>
++          {cta && (
++            <motion.div
++              className="wave-cta"
++              initial={{ opacity: 0, y: 14 }}
++              animate={{ opacity: 1, y: 0, transition: { delay: reduced ? 0.1 : letters.length * 0.032 + 0.2, duration: 0.6 } }}
++              exit={{ opacity: 0, transition: { duration: 0.25 } }}
++            >
++              <Button variant="goldOutline" size="xl" onClick={onBook}>Agendar una cita <ArrowUpRight /></Button>
++            </motion.div>
++          )}
++        </motion.div>
++      )}
++    </AnimatePresence>
++  );
++}
+diff --git a/src/components/brocante/phases.ts b/src/components/brocante/phases.ts
+new file mode 100644
+index 0000000..a56b616
+--- /dev/null
++++ b/src/components/brocante/phases.ts
+@@ -0,0 +1,21 @@
++export type Phase = { key: string; end: number; textStart: number; title: string; cta?: boolean };
++
++// One continuous shot, divided into content phases. The headline for a
++// phase only appears near the *end* of that phase's window (textStart),
++// once the camera has settled on what the text is talking about.
++export const phases: Phase[] = [
++  { key: "arrival", end: 0.4, textStart: 0.27, title: "L'Art de Recevoir." },
++  { key: "detail", end: 0.75, textStart: 0.63, title: "La Belleza en el Detalle." },
++  { key: "finale", end: 1.01, textStart: 0.89, title: "Vivan la Experiencia.", cta: true },
++];
++
++export function activePhaseIndex(progress: number) {
++  const index = phases.findIndex((phase) => progress < phase.end);
++  return index === -1 ? phases.length - 1 : index;
++}
++
++export function isTextVisible(progress: number, index: number) {
++  const phase = phases[index];
++  if (!phase) return false;
++  return progress >= phase.textStart && progress < phase.end;
++}
+diff --git a/src/components/brocante/scenes.ts b/src/components/brocante/scenes.ts
+deleted file mode 100644
+index eed7f86..0000000
+--- a/src/components/brocante/scenes.ts
++++ /dev/null
+@@ -1,48 +0,0 @@
+-export type Corner = "top-left" | "bottom-right" | "bottom-left" | "top-right";
+-
+-export type Scene = {
+-  start: number;
+-  end: number;
+-  tag: string;
+-  title: string;
+-  text: string;
+-  corner: Corner;
+-  stat: string;
+-  statLabel: string;
+-  note: string;
+-  bigCta?: boolean;
+-};
+-
+-// Progress windows are fractions (0–1) of the whole cinematic scroll.
+-// Small notes appear in the corners in this order:
+-// top-left → bottom-right → bottom-left → top-right.
+-export const scenes: Scene[] = [
+-  {
+-    start: 0, end: 0.33, corner: "top-left",
+-    tag: "LOMAS–VIRREYES · CDMX", title: "L'Art de Recevoir.",
+-    text: "Una terraza privada concebida para bodas íntimas y celebraciones que trascienden el tiempo.",
+-    stat: "120", statLabel: "invitados · máximo", note: "Una escala íntima, con espacio para respirar.",
+-  },
+-  {
+-    start: 0.33, end: 0.66, corner: "bottom-right",
+-    tag: "DISEÑO Y MATERIA", title: "La Belleza en el Detalle.",
+-    text: "Texturas orgánicas, cantera y luz natural en un entorno exclusivo de hasta 120 invitados.",
+-    stat: "02", statLabel: "ambientes · un recorrido", note: "Un recorrido continuo entre salón y terraza.",
+-  },
+-  {
+-    start: 0.66, end: 0.9, corner: "bottom-left",
+-    tag: "ESPACIOS VERSÁTILES", title: "Entre Cielo y Arquitectura.",
+-    text: "Salón interior climatizado, asador de autor, horno de leña y vistas panorámicas del poniente.",
+-    stat: "Poniente", statLabel: "la hora dorada", note: "Vistas abiertas hacia el atardecer sobre Lomas de Chapultepec.",
+-  },
+-  {
+-    start: 0.9, end: 1.01, corner: "top-right", bigCta: true,
+-    tag: "TU FECHA EN BROCANTE", title: "Vivan la Experiencia.", text: "",
+-    stat: "Privado", statLabel: "solo para ustedes", note: "Una celebración privada, concebida alrededor de ustedes.",
+-  },
+-];
+-
+-export function sceneIndexAt(progress: number) {
+-  const index = scenes.findIndex((scene) => progress >= scene.start && progress < scene.end);
+-  return index === -1 ? scenes.length - 1 : index;
+-}
+diff --git a/src/lib/admin-session.server.ts b/src/lib/admin-session.server.ts
+new file mode 100644
+index 0000000..d849eaa
+--- /dev/null
++++ b/src/lib/admin-session.server.ts
+@@ -0,0 +1,26 @@
++import { useSession } from "@tanstack/react-start/server";
++
++type AdminSessionData = { authenticated?: boolean };
++
++function sessionSecret() {
++  const secret = process.env["ADMIN_SESSION_SECRET"];
++  if (!secret || secret.length < 32) {
++    // Fails loudly on purpose: a short/missing secret would make the
++    // session trivial to forge. Set a real 32+ character random string as
++    // the ADMIN_SESSION_SECRET environment variable on the hosting platform.
++    throw new Error("ADMIN_SESSION_SECRET must be set to a random string of 32+ characters.");
++  }
++  return secret;
++}
++
++// Encrypted, signed, httpOnly session cookie (TanStack Start's built-in
++// sealed-session mechanism). The password itself is never stored in the
++// cookie, and the cookie cannot be forged without ADMIN_SESSION_SECRET.
++export function adminSession() {
++  return useSession<AdminSessionData>({
++    password: sessionSecret(),
++    name: "brocante-admin",
++    maxAge: 60 * 60 * 8,
++    cookie: { httpOnly: true, sameSite: "lax", secure: true, path: "/" },
++  });
++}
+diff --git a/src/lib/admin.server.ts b/src/lib/admin.server.ts
+new file mode 100644
+index 0000000..72ef97c
+--- /dev/null
++++ b/src/lib/admin.server.ts
+@@ -0,0 +1,45 @@
++import { createServerFn } from "@tanstack/react-start";
++import { adminSession } from "./admin-session.server";
++import { listReservedDates, setReservedDate } from "./reservations-store.server";
++
++export const adminStatus = createServerFn({ method: "GET" }).handler(async () => {
++  const session = await adminSession();
++  return { authenticated: Boolean(session.data.authenticated) };
++});
++
++export const adminLogin = createServerFn({ method: "POST" })
++  .validator((data: unknown) => data as { password: string })
++  .handler(async ({ data }) => {
++    const expected = process.env["ADMIN_PASSWORD"];
++    if (!expected) return { ok: false as const, error: "not-configured" as const };
++    // Fixed-length comparison isn't feasible without extra deps here; for a
++    // single low-traffic admin login this direct compare is an acceptable
++    // trade-off. Rotate ADMIN_PASSWORD if you suspect it has leaked.
++    if (data.password !== expected) return { ok: false as const, error: "invalid" as const };
++    const session = await adminSession();
++    await session.update({ authenticated: true });
++    return { ok: true as const };
++  });
++
++export const adminLogout = createServerFn({ method: "POST" }).handler(async () => {
++  const session = await adminSession();
++  await session.clear();
++  return { ok: true as const };
++});
++
++async function requireAdmin() {
++  const session = await adminSession();
++  if (!session.data.authenticated) throw new Error("Not authenticated");
++}
++
++export const getReservedDates = createServerFn({ method: "GET" }).handler(async () => {
++  return { dates: listReservedDates() };
++});
++
++export const toggleReservedDate = createServerFn({ method: "POST" })
++  .validator((data: unknown) => data as { date: string; reserved: boolean })
++  .handler(async ({ data }) => {
++    await requireAdmin();
++    const dates = setReservedDate(data.date, data.reserved);
++    return { dates };
++  });
+diff --git a/src/lib/reservations-store.server.ts b/src/lib/reservations-store.server.ts
+new file mode 100644
+index 0000000..fcaed70
+--- /dev/null
++++ b/src/lib/reservations-store.server.ts
+@@ -0,0 +1,27 @@
++// MVP storage for reserved dates: kept in the server process memory.
++//
++// This works correctly while the server instance stays alive (fine for
++// trying this out and for a low-traffic site on a traditional Node host).
++// On a serverless / edge platform (Cloudflare Workers, most "Lovable"
++// deployments included) each cold start gets a fresh empty Map — reserved
++// dates would reset on redeploy or after periods of inactivity.
++//
++// To make this durable and shared across every server instance, swap the
++// three functions below for calls to a real store — the rest of the app
++// never needs to change:
++//   - Cloudflare KV (best fit if deploying to Cloudflare: free tier, a
++//     couple of lines using the KV binding already available to Nitro)
++//   - Supabase (a `reserved_dates` table, free tier, also gives the CEO
++//     login for free via Supabase Auth instead of the single shared
++//     password used here)
++const reserved = new Set<string>();
++
++export function listReservedDates(): string[] {
++  return Array.from(reserved).sort();
++}
++
++export function setReservedDate(date: string, isReserved: boolean) {
++  if (isReserved) reserved.add(date);
++  else reserved.delete(date);
++  return listReservedDates();
++}
+diff --git a/src/routes/__root.tsx b/src/routes/__root.tsx
+index 9e6e75e..0d6a989 100644
+--- a/src/routes/__root.tsx
++++ b/src/routes/__root.tsx
+@@ -91,7 +91,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
+       { rel: "apple-touch-icon", href: "/apple-touch-icon.png" },
+       { rel: "preconnect", href: "https://fonts.googleapis.com" },
+       { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
+-      { rel: "stylesheet", href: "https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;1,400&family=Plus+Jakarta+Sans:wght@400;500;600&display=swap" },
++      { rel: "stylesheet", href: "https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400;1,9..144,500&family=Instrument+Sans:wght@400;500;600&display=swap" },
+     ],
+   }),
+   shellComponent: RootShell,
+diff --git a/src/routes/reservas-admin-2a91f.tsx b/src/routes/reservas-admin-2a91f.tsx
+new file mode 100644
+index 0000000..bd6a094
+--- /dev/null
++++ b/src/routes/reservas-admin-2a91f.tsx
+@@ -0,0 +1,122 @@
++import { createFileRoute } from "@tanstack/react-router";
++import { useEffect, useState } from "react";
++import { Lock, LogOut, ShieldCheck } from "lucide-react";
++import { Button } from "@/components/ui/button";
++import { adminLogin, adminLogout, adminStatus, getReservedDates, toggleReservedDate } from "@/lib/admin.server";
++
++// Deliberately not linked from anywhere in the site's navigation. The path
++// itself is not the security boundary (see the server-side session check in
++// admin.server.ts) — it just keeps this out of casual reach.
++export const Route = createFileRoute("/reservas-admin-2a91f")({
++  head: () => ({ meta: [{ title: "Panel privado · Brocante Terraza" }, { name: "robots", content: "noindex, nofollow" }] }),
++  component: AdminPage,
++});
++
++function monthGrid(monthOffset: number) {
++  const now = new Date();
++  const month = new Date(now.getFullYear(), now.getMonth() + monthOffset, 1);
++  const days = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
++  const lead = (new Date(month.getFullYear(), month.getMonth(), 1).getDay() + 6) % 7;
++  return { month, days, lead };
++}
++
++function iso(y: number, m: number, d: number) {
++  return `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
++}
++
++function AdminPage() {
++  const [checked, setChecked] = useState(false);
++  const [authed, setAuthed] = useState(false);
++  const [password, setPassword] = useState("");
++  const [error, setError] = useState<string | null>(null);
++  const [dates, setDates] = useState<Set<string>>(new Set());
++  const [busy, setBusy] = useState(false);
++
++  useEffect(() => {
++    adminStatus().then((res) => {
++      setAuthed(res.authenticated);
++      setChecked(true);
++    });
++  }, []);
++
++  useEffect(() => {
++    if (!authed) return;
++    getReservedDates().then((res) => setDates(new Set(res.dates)));
++  }, [authed]);
++
++  const login = async (event: React.FormEvent) => {
++    event.preventDefault();
++    setError(null);
++    setBusy(true);
++    const res = await adminLogin({ data: { password } }).finally(() => setBusy(false));
++    if (res.ok) {
++      setAuthed(true);
++      setPassword("");
++    } else if (res.error === "not-configured") {
++      setError("ADMIN_PASSWORD no está configurada en el servidor todavía.");
++    } else {
++      setError("Contraseña incorrecta.");
++    }
++  };
++
++  const toggle = async (date: string) => {
++    const nextReserved = !dates.has(date);
++    setDates((prev) => {
++      const next = new Set(prev);
++      if (nextReserved) next.add(date);
++      else next.delete(date);
++      return next;
++    });
++    await toggleReservedDate({ data: { date, reserved: nextReserved } });
++  };
++
++  if (!checked) return <div className="admin-shell admin-loading">Verificando sesión…</div>;
++
++  if (!authed) {
++    return (
++      <div className="admin-shell admin-login">
++        <form onSubmit={login} className="admin-login-card">
++          <Lock size={18} />
++          <h1>Panel privado</h1>
++          <p>Acceso exclusivo para la administración de Brocante Terraza.</p>
++          <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Contraseña" autoFocus />
++          {error && <span className="admin-error">{error}</span>}
++          <Button type="submit" variant="luxury" size="luxury" disabled={busy}>{busy ? "Verificando…" : "Entrar"}</Button>
++        </form>
++      </div>
++    );
++  }
++
++  return (
++    <div className="admin-shell admin-dashboard">
++      <header>
++        <span><ShieldCheck size={16} /> Panel privado · Brocante Terraza</span>
++        <Button variant="ghost" size="sm" onClick={() => adminLogout().then(() => setAuthed(false))}><LogOut size={14} /> Salir</Button>
++      </header>
++      <p className="admin-hint">Marca una fecha como reservada para que desaparezca del calendario público. Vuelve a hacer clic para liberarla.</p>
++      <div className="admin-months">
++        {[0, 1, 2].map((offset) => {
++          const { month, days, lead } = monthGrid(offset);
++          return (
++            <article key={offset} className="admin-month">
++              <h3>{month.toLocaleDateString("es-MX", { month: "long", year: "numeric" })}</h3>
++              <div className="admin-days">
++                {Array.from({ length: lead }, (_, i) => <span key={`b-${i}`} />)}
++                {Array.from({ length: days }, (_, i) => {
++                  const d = i + 1;
++                  const dateIso = iso(month.getFullYear(), month.getMonth(), d);
++                  const isReserved = dates.has(dateIso);
++                  return (
++                    <button key={dateIso} type="button" className={isReserved ? "is-reserved" : ""} onClick={() => toggle(dateIso)}>
++                      {d}
++                    </button>
++                  );
++                })}
++              </div>
++            </article>
++          );
++        })}
++      </div>
++    </div>
++  );
++}
+diff --git a/src/styles.css b/src/styles.css
+index e825c41..95c7742 100644
+--- a/src/styles.css
++++ b/src/styles.css
+@@ -19,8 +19,8 @@
+  */
+ 
+ @theme inline {
+-  --font-sans: "Plus Jakarta Sans", sans-serif;
+-  --font-display: "Playfair Display", serif;
++  --font-sans: "Instrument Sans", "Plus Jakarta Sans", sans-serif;
++  --font-display: "Fraunces", "Playfair Display", serif;
+   --radius-sm: calc(var(--radius) - 4px);
+   --radius-md: calc(var(--radius) - 2px);
+   --radius-lg: var(--radius);
+@@ -197,26 +197,7 @@
+   .loader-fill { position: relative; display: inline-block; margin-top: 1.25rem; font-family: var(--font-display); font-style: italic; font-size: clamp(1.05rem, 2.2vw, 1.5rem); letter-spacing: .03em; white-space: nowrap; color: oklch(0.98 0.005 70 / .35); }
+   .loader-fill::before { content: attr(data-text); position: absolute; inset: 0; color: var(--gold); clip-path: inset(0 calc(100% - var(--fill, 0%)) 0 0); transition: clip-path .2s linear; }
+ 
+-  .scene-layer { position: absolute; inset: 0; z-index: 3; pointer-events: none; color: var(--background); }
+-  .scene-headline { position: absolute; top: 50%; left: 50%; translate: -50% -50%; width: min(64rem, 90vw); display: flex; flex-direction: column; align-items: center; text-align: center; perspective: 900px; }
+-  .scene-tag { display: block; margin-bottom: 1.4rem; font-size: .62rem; font-weight: 600; letter-spacing: .28em; color: color-mix(in oklch, var(--gold) 70%, white); }
+-  .scene-headline h1 { display: flex; flex-wrap: wrap; justify-content: center; column-gap: .28em; font-family: var(--font-display); font-size: clamp(2.3rem, 7.4vw, 7.6rem); font-weight: 400; line-height: .98; text-transform: uppercase; letter-spacing: -.01em; text-shadow: 0 2px 50px oklch(0.1 0.01 60 / .55); transform-style: preserve-3d; }
+-  .word-mask { display: inline-block; padding-bottom: .08em; }
+-  .word { display: inline-block; transform-origin: 50% 100%; }
+-  .word-accent { font-style: italic; text-transform: none; color: color-mix(in oklch, var(--gold) 60%, white); }
+-  .scene-headline p { max-width: 34rem; margin-top: 1.5rem; font-size: clamp(.9rem, 1.2vw, 1.05rem); line-height: 1.75; color: oklch(0.98 0.005 70 / .9); text-shadow: 0 1px 24px oklch(0.1 0.01 60 / .6); }
+-  .scene-actions { display: flex; justify-content: center; margin-top: 2.25rem; pointer-events: auto; }
+-
+-  .scene-note { position: absolute; display: flex; flex-direction: column; align-items: flex-start; gap: .35rem; width: min(19rem, 78vw); padding: 1.35rem 1.4rem 1.4rem; border: 1px solid color-mix(in oklch, var(--gold) 38%, transparent); border-radius: 1.4rem; background: oklch(0.16 0.012 60 / .38); backdrop-filter: blur(18px) saturate(130%); box-shadow: 0 24px 60px oklch(0.1 0.01 60 / .35), inset 0 1px 0 oklch(1 0 0 / .12); pointer-events: auto; transform-style: preserve-3d; }
+-  .note-top-left { top: clamp(6rem, 14vh, 8.5rem); left: clamp(1rem, 4vw, 4rem); }
+-  .note-top-right { top: clamp(6rem, 14vh, 8.5rem); right: clamp(1rem, 4vw, 4rem); }
+-  .note-bottom-left { bottom: clamp(4.5rem, 10vh, 6.5rem); left: clamp(1rem, 4vw, 4rem); }
+-  .note-bottom-right { bottom: clamp(4.5rem, 10vh, 6.5rem); right: clamp(1rem, 4vw, 4rem); }
+-  .note-index { font-size: .55rem; font-weight: 600; letter-spacing: .22em; color: oklch(0.98 0.005 70 / .6); }
+-  .note-stat { margin-top: .35rem; font-family: var(--font-display); font-size: clamp(2.4rem, 4.4vw, 3.6rem); font-weight: 400; line-height: 1; color: color-mix(in oklch, var(--gold) 55%, white); }
+-  .note-label { font-size: .58rem; font-weight: 600; letter-spacing: .18em; text-transform: uppercase; color: oklch(0.98 0.005 70 / .78); }
+-  .scene-note p { margin: .55rem 0 .9rem; font-size: .82rem; line-height: 1.65; color: oklch(0.98 0.005 70 / .86); }
+-  .scene-note .btn-note, .scene-note button { height: 2.7rem; padding-inline: 1.2rem; font-size: .6rem; }
++
+   .scroll-cue { position: absolute; z-index: 4; right: 3rem; bottom: 2rem; display: grid; place-items: center; width: 3rem; height: 3rem; border: 1px solid color-mix(in oklch, var(--background) 45%, transparent); border-radius: 50%; color: var(--background); animation: float 2s ease-in-out infinite; }
+ 
+   .atmosphere-marquee { padding-block: 2rem 5rem; overflow: hidden; background: var(--background); }
+@@ -440,14 +421,12 @@
+   .site-atmosphere .contact-section { background: linear-gradient(180deg, transparent 0%, color-mix(in oklch, var(--sky) 80%, transparent) 35%, var(--sky) 100%); }
+   @keyframes intro-in { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
+   @keyframes orb-drift { from { transform: translate3d(0, 0, 0) scale(1); } to { transform: translate3d(6rem, -4rem, 0) scale(1.15); } }
++  @keyframes atmosphere-breathe { 0%, 100% { filter: hue-rotate(0deg) brightness(1); } 50% { filter: hue-rotate(4deg) brightness(1.03); } }
++  .site-atmosphere { animation: atmosphere-breathe 18s ease-in-out infinite; }
++  @media (prefers-reduced-motion: reduce) { .site-atmosphere { animation: none; } }
+   @media (prefers-reduced-motion: reduce) { .atmosphere-orb { animation: none; } }
+ 
+   @media (max-width: 767px) {
+-    .scene-headline h1 { font-size: clamp(2rem, 11vw, 3.6rem); }
+-    .scene-note { width: min(15.5rem, 66vw); padding: 1rem 1.05rem 1.1rem; }
+-    .scene-note p { font-size: .74rem; margin-bottom: .7rem; }
+-    .note-top-left, .note-top-right { top: 5rem; }
+-    .note-bottom-left, .note-bottom-right { bottom: 4.5rem; }
+     .intro-facts li { min-width: 7rem; padding: .65rem .8rem; }
+   }
+ }
+@@ -457,3 +436,38 @@
+   .content-section h2, .spec-card h3, .faq-list button, .contact-section h2, .footer-brand strong { transition: color .35s ease; }
+   .content-section h2:hover, .spec-card:hover h3, .faq-list button:hover, .contact-section h2:hover { color: var(--gold); }
+ }
++
++@layer components {
++  /* ---------- Private admin panel ---------- */
++  .admin-shell { min-height: 100vh; padding: 2rem 1.25rem 4rem; background: var(--ink); color: var(--background); font-family: var(--font-sans); }
++  .admin-loading { display: grid; place-items: center; font-size: .85rem; color: oklch(0.98 0.005 70 / .6); }
++  .admin-login { display: grid; place-items: center; }
++  .admin-login-card { display: flex; flex-direction: column; align-items: center; gap: .85rem; width: min(22rem, 90vw); padding: 2.5rem 2rem; border: 1px solid color-mix(in oklch, var(--gold) 35%, transparent); border-radius: 1.25rem; background: oklch(0.16 0.012 60 / .6); text-align: center; }
++  .admin-login-card h1 { font-family: var(--font-display); font-size: 1.4rem; font-weight: 400; }
++  .admin-login-card p { font-size: .82rem; color: oklch(0.98 0.005 70 / .7); }
++  .admin-login-card input { width: 100%; padding: .8rem 1rem; border: 1px solid oklch(0.98 0.005 70 / .25); border-radius: .7rem; background: oklch(0.98 0.005 70 / .06); color: var(--background); font-size: .9rem; }
++  .admin-error { font-size: .75rem; color: oklch(0.72 0.16 30); }
++  .admin-dashboard header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: .5rem; padding-bottom: 1.25rem; border-bottom: 1px solid oklch(0.98 0.005 70 / .12); font-size: .78rem; letter-spacing: .06em; }
++  .admin-dashboard header span { display: inline-flex; align-items: center; gap: .5rem; color: var(--gold); }
++  .admin-hint { margin: 1.25rem 0 1.75rem; font-size: .85rem; color: oklch(0.98 0.005 70 / .68); }
++  .admin-months { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: 1.5rem; }
++  .admin-month h3 { margin-bottom: .9rem; font-family: var(--font-display); font-size: 1.1rem; text-transform: capitalize; }
++  .admin-days { display: grid; grid-template-columns: repeat(7, 1fr); gap: .35rem; }
++  .admin-days button { aspect-ratio: 1; border: 1px solid oklch(0.98 0.005 70 / .14); border-radius: .5rem; background: transparent; color: var(--background); font-size: .78rem; cursor: pointer; transition: all .2s ease; }
++  .admin-days button:hover { border-color: var(--gold); }
++  .admin-days button.is-reserved { background: color-mix(in oklch, var(--gold) 28%, transparent); border-color: var(--gold); color: var(--gold); font-weight: 600; }
++  .admin-days span { aspect-ratio: 1; }
++}
++
++@layer components {
++  /* ---------- Wave gold headline (single-shot cinematic) ---------- */
++  .wave-text-wrap { position: absolute; top: clamp(5.5rem, 12vh, 8rem); left: 50%; translate: -50% 0; z-index: 3; display: flex; flex-direction: column; align-items: center; gap: 1.4rem; width: min(60rem, 92vw); text-align: center; pointer-events: none; }
++  .wave-text { display: flex; flex-wrap: wrap; justify-content: center; font-family: var(--font-display); font-style: italic; font-weight: 500; font-size: clamp(1.9rem, 5.4vw, 4.4rem); line-height: 1.05; letter-spacing: -.01em; color: color-mix(in oklch, var(--gold) 62%, white); text-shadow: 0 2px 40px oklch(0.12 0.02 60 / .55), 0 0 60px color-mix(in oklch, var(--gold) 35%, transparent); }
++  .wave-letter { display: inline-block; }
++  .wave-cta { pointer-events: auto; }
++
++  @media (max-width: 767px) {
++    .wave-text { font-size: clamp(1.5rem, 8vw, 2.6rem); }
++    .wave-text-wrap { top: clamp(4.5rem, 11vh, 6rem); gap: 1rem; }
++  }
++}
